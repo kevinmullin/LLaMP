@@ -19,9 +19,13 @@ jobs:
           cargo install cbindgen --version 0.29.4 --locked
           cbindgen --config crates/llamp-ffi/cbindgen.toml --crate llamp-ffi --output /tmp/llamp.h
           diff -u crates/llamp-ffi/include/llamp.h /tmp/llamp.h
-      - name: Swift polls the counter at 60 Hz
+      - name: Swift package tests
         run: |
           shells/macos/build-xcframework.sh
           swift test --package-path shells/macos
-      - name: Phase 3 launch-to-window and bundle size
+      - name: Phase 3 bundle size and launch measurement
+        env:
+          # Gross-regression ceiling only. 400 ms is the local gate.
+          # 750 = 1.5 × 444.2 ms on this runner, rounded up.
+          LLAMP_LAUNCH_CI_CEILING_MS: "750"
         run: shells/macos/scripts/phase3-budgets.sh
