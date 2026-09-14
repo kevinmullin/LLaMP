@@ -99,7 +99,7 @@ EQ, DSP, ReplayGain, gapless, balance, and reactive visuals are off. The UI show
 
 ## Core and shell
 
-The shell receives a `Skin` that is already sliced. It never parses a BMP. It draws sprites from an atlas the core built, scaled by an integer factor. The CPU reference blit in `llamp-skin` is what golden tests use. The shell’s GPU or layer blit must match it at 1×. See [ADR 005](adr/005-skin-rendering.md).
+The shell never parses a BMP. It integer-scales a composed RGBA surface the core already blitted, plus control and region tables. Bitmap glyph cells may still cross FFI. The CPU reference blit in `llamp-skin` is what golden tests use. The shell’s layer blit must match it at 1×. See [ADR 005](adr/005-skin-rendering.md).
 
 The shell owns hit testing against the region mask and the control map the core provides (rects in skin pixels). The same rects are the `NSAccessibility` elements. There is one map. A control that is drawn and not in the accessibility map is a bug.
 

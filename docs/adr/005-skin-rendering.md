@@ -3,6 +3,7 @@
 - Status: accepted
 - Date: 2026-09-13
 - Amended: 2026-09-13. The automated compare is a pinned-color-space backing-store capture, not a window-server screenshot. macOS backing scale is 1 or 2.
+- Amended: 2026-09-14. The C ABI the shell calls for chrome is a composed surface, not a raw atlas plus sprite rectangles. `llamp-skin` still parses, atlases, and CPU-blits. Glyph slices may still cross FFI. CoreText stays in the shell.
 
 ## Context
 
@@ -12,9 +13,11 @@ Skins are 1× pixel art. A linear magnification filter on the layer we draw will
 
 ## Decision
 
-`llamp-skin` parses the `.wsz`, decodes BMP, and slices sheets into one RGBA atlas plus a sprite table, region polygons, `viscolor.txt`, and `pledit.txt` colors. That `Skin` value is what the FFI returns, as an atlas buffer and tables of rectangles. A shell never parses a BMP.
+`llamp-skin` parses the `.wsz`, decodes BMP, and slices sheets into one RGBA atlas plus a sprite table, region polygons, `viscolor.txt`, and `pledit.txt` colors. That `Skin` value stays in Rust. A shell never parses a BMP.
 
-A CPU reference blit in `llamp-skin` renders a window to an RGBA buffer. Golden tests use that blit. Shells must match it at 1×.
+The C ABI the shell calls for chrome is a composed RGBA surface plus control and region tables (`llamp_skin_blit_main`, `llamp_skin_blit_display`, `llamp_eq_blit`), not a raw atlas buffer plus sprite rectangles. Bitmap glyph cells may still cross FFI (`llamp_text_row_blit`, `llamp_text_char_blit`). CoreText stays in the shell.
+
+A CPU reference blit in `llamp-skin` renders a window to an RGBA buffer. Golden tests use that blit. Shells integer-scale the composed surface and must match it at 1×.
 
 Scale factors the shell may use: 1, 2, and 4, nearest-neighbor. The layer’s magnification filter is nearest. Double-size doubles the skin-pixel map and then the display integer scale multiplies. On macOS the backing factor is 1 or 2. The testable surface is that backing store. A scaled panel may still look soft after the window server resamples a correct 2× store. That is not a failed phase 3 exit. On Windows, a fractional OS scale picks the nearest integer factor and letterboxes. Bilinear, trilinear, and mipmaps are bugs for skin chrome we draw.
 

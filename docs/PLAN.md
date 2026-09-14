@@ -296,7 +296,7 @@ Demo: the ship candidate. Windows work does not start before this exit is met.
 
 ### 13 — Windows shell
 
-Scope: Win32 custom chrome over the same C ABI. WASAPI shared and exclusive behind `Output`. Integer-scale policy for fractional DPI (letterbox; never bilinear skins).
+Scope: Win32 custom chrome over the same C ABI. WASAPI shared and exclusive behind `Output`. Integer-scale policy for fractional DPI (letterbox; never bilinear skins). The shell blits the core composed surface at integer scale. It does not assemble sprites from an atlas.
 
 Exit:
 
@@ -308,7 +308,7 @@ Demo: main, EQ, and playlist on Windows.
 
 ### 14 — Linux shell
 
-Scope: GTK4 for windowing and input only. Custom atlas blit. PipeWire, ALSA fallback. Does not start until the Windows shell trait has survived phase 13 without a breaking change. See [ADR 008](adr/008-linux-toolkit.md).
+Scope: GTK4 for windowing and input only. Integer-scale blit of the core composed surface on the same C ABI. PipeWire, ALSA fallback. Does not start until the Windows shell trait has survived phase 13 without a breaking change. See [ADR 008](adr/008-linux-toolkit.md).
 
 Exit:
 
