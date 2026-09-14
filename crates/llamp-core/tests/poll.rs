@@ -39,7 +39,9 @@ fn retain_references_writes_storage_referenced() {
     assert_eq!(session.reference_count(), 1000);
     let lib = llamp_library::Library::open(&root.join("library.sqlite")).expect("reopen");
     assert_eq!(
-        lib.storage_of(&files.join("track-0000")).expect("storage").as_deref(),
+        lib.storage_of(&files.join("track-0000"))
+            .expect("storage")
+            .as_deref(),
         Some("referenced")
     );
     let _ = fs::remove_dir_all(&files);

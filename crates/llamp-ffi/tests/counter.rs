@@ -19,7 +19,10 @@ fn publisher_takes_no_lock_and_poll_is_monotonic() {
     let mut last = previous;
     for _ in 0..1_000 {
         let value = llamp_ffi::llamp_counter_poll();
-        assert!(value >= previous, "poll went backwards: {previous} -> {value}");
+        assert!(
+            value >= previous,
+            "poll went backwards: {previous} -> {value}"
+        );
         previous = value;
         last = value;
     }

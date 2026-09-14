@@ -16,6 +16,12 @@ llamp-plugin-api = { path = "../llamp-plugin-api" }
 llamp-plugin-host = { path = "../llamp-plugin-host" }
 llamp-skin = { path = "../llamp-skin" }
 llamp-source-local = { path = "../../plugins/llamp-source-local" }
+pollster = "0.4"
+raw-window-handle = "0.6"
+wgpu = "=30.0.1"
 
 [dev-dependencies]
 xtask = { path = "../../xtask" }
+llamp-audio = { path = "../llamp-audio" }
+llamp-plugin-host = { path = "../llamp-plugin-host" }
+llamp-skin = { path = "../llamp-skin" }

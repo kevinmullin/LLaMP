@@ -20,7 +20,10 @@ const Q: [f32; 10] = [
 
 #[test]
 fn q_vector_is_fixed_and_center_gain_is_within_half_db() {
-    assert_eq!(BAND_HZ, [60.0, 170.0, 310.0, 600.0, 1000.0, 3000.0, 6000.0, 12000.0, 14000.0, 16000.0]);
+    assert_eq!(
+        BAND_HZ,
+        [60.0, 170.0, 310.0, 600.0, 1000.0, 3000.0, 6000.0, 12000.0, 14000.0, 16000.0]
+    );
     for (got, want) in BAND_Q.iter().zip(Q) {
         assert!((got - want).abs() < 1e-6, "Q {got} != {want}");
     }
@@ -121,7 +124,11 @@ fn fft_tap_uses_named_window_hop_and_full_scale_reference() {
     }
     let mut tap = FftTap::new();
     let snap = tap.push(&pcm).expect("one hop after a full window");
-    assert!((snap.bins_db[bin] - 0.0).abs() <= 1.0, "bin {bin} is {} dB", snap.bins_db[bin]);
+    assert!(
+        (snap.bins_db[bin] - 0.0).abs() <= 1.0,
+        "bin {bin} is {} dB",
+        snap.bins_db[bin]
+    );
     assert!(snap.bins_db[bin] > snap.bins_db[bin + 4]);
 }
 

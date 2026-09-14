@@ -1,9 +1,10 @@
-//! Snap and dock. 10 skin pixels to snap, 12 to undock. Four windows share one group.
+//! Snap and dock. 10 skin pixels to snap, 12 to undock. Five windows share one group.
 
 use crate::eq_window::Frame;
 
 pub(crate) const SNAP: i32 = 10;
 pub(crate) const UNDOCK2: i32 = 12 * 12;
+const PANE_N: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pane {
@@ -11,6 +12,7 @@ pub enum Pane {
     Eq = 1,
     Playlist = 2,
     Browser = 3,
+    Vis = 4,
 }
 
 impl Pane {
@@ -18,15 +20,21 @@ impl Pane {
         self as usize
     }
 
-    fn all() -> [Pane; 4] {
-        [Pane::Main, Pane::Eq, Pane::Playlist, Pane::Browser]
+    fn all() -> [Pane; PANE_N] {
+        [
+            Pane::Main,
+            Pane::Eq,
+            Pane::Playlist,
+            Pane::Browser,
+            Pane::Vis,
+        ]
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GroupMove {
-    frames: [Frame; 4],
-    docked: [bool; 4],
+    frames: [Frame; PANE_N],
+    docked: [bool; PANE_N],
 }
 
 impl GroupMove {
@@ -40,8 +48,8 @@ impl GroupMove {
 }
 
 pub struct DockGroup {
-    frames: [Frame; 4],
-    docked: [bool; 4],
+    frames: [Frame; PANE_N],
+    docked: [bool; PANE_N],
     accum_x: i32,
     accum_y: i32,
 }
@@ -54,8 +62,9 @@ impl DockGroup {
                 Frame::new(0, 140, 275, 116),
                 Frame::new(275, 0, 275, 116),
                 Frame::new(275, 140, 275, 116),
+                Frame::new(550, 0, 275, 116),
             ],
-            docked: [false; 4],
+            docked: [false; PANE_N],
             accum_x: 0,
             accum_y: 0,
         }
@@ -73,14 +82,12 @@ impl DockGroup {
     pub fn drag(&mut self, pane: Pane, dx: i32, dy: i32) -> GroupMove {
         self.accum_x = self.accum_x.saturating_add(dx);
         self.accum_y = self.accum_y.saturating_add(dy);
-        let travel = self.accum_x.saturating_mul(self.accum_x) + self.accum_y.saturating_mul(self.accum_y);
+        let travel =
+            self.accum_x.saturating_mul(self.accum_x) + self.accum_y.saturating_mul(self.accum_y);
         if self.docked[pane.index()] && travel > UNDOCK2 {
             self.docked[pane.index()] = false;
             shift(&mut self.frames[pane.index()], dx, dy);
         } else if self.docked[pane.index()] {
-            for flag in &self.docked {
-                let _ = flag;
-            }
             for (index, docked) in self.docked.iter().enumerate() {
                 if *docked {
                     shift(&mut self.frames[index], dx, dy);
@@ -149,10 +156,10 @@ pub(crate) fn touching(a: Frame, b: Frame) -> bool {
         || (horizontally_adjacent(a, b) && overlaps(a.y, a.h, b.y, b.h))
 }
 
-fn components(frames: &[Frame; 4]) -> [bool; 4] {
-    let mut seen = [false; 4];
-    let mut docked = [false; 4];
-    for start in 0..4 {
+fn components(frames: &[Frame; PANE_N]) -> [bool; PANE_N] {
+    let mut seen = [false; PANE_N];
+    let mut docked = [false; PANE_N];
+    for start in 0..PANE_N {
         if seen[start] {
             continue;
         }
@@ -161,7 +168,7 @@ fn components(frames: &[Frame; 4]) -> [bool; 4] {
         seen[start] = true;
         while let Some(index) = stack.pop() {
             members.push(index);
-            for other in 0..4 {
+            for other in 0..PANE_N {
                 if seen[other] || !touching(frames[index], frames[other]) {
                     continue;
                 }

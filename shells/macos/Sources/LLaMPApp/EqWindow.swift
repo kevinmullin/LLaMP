@@ -349,6 +349,7 @@ public final class WindowDock {
     public weak var equalizer: EqWindow?
     public weak var playlist: PlaylistWindow?
     public weak var browser: BrowserWindow?
+    public weak var visualizer: VisWindow?
     private var docked = false
     private var groupOrigin: NSPoint?
     private var lastMain = Frame(x: 0, y: 0)
@@ -367,9 +368,14 @@ public final class WindowDock {
         self.browser = browser
     }
 
+    public func attach(visualizer: VisWindow) {
+        self.visualizer = visualizer
+    }
+
     public func detachExtras() {
         playlist = nil
         browser = nil
+        visualizer = nil
         groupOrigin = nil
     }
 
@@ -400,7 +406,7 @@ public final class WindowDock {
     }
 
     public func track(which: UInt32, event: NSEvent) {
-        if playlist != nil || browser != nil {
+        if playlist != nil || browser != nil || visualizer != nil {
             trackGroup(which: which, event: event)
             return
         }
@@ -506,6 +512,7 @@ public final class WindowDock {
         publish(1, equalizer, fallback: (100_000, 100_000, 0, 0))
         publish(2, playlist, fallback: (100_000, 0, 0, 0))
         publish(3, browser, fallback: (100_000, 100_000, 0, 0))
+        publish(4, visualizer, fallback: (100_000, 200_000, 0, 0))
     }
 
     private func publish(_ which: UInt32, _ window: NSWindow?, fallback: (Int32, Int32, Int32, Int32)) {
@@ -531,6 +538,7 @@ public final class WindowDock {
         if equalizer != nil { place(equalizer, group.eq, origin, scale) }
         if playlist != nil { place(playlist, group.playlist, origin, scale) }
         if browser != nil { place(browser, group.browser, origin, scale) }
+        if visualizer != nil { place(visualizer, group.vis, origin, scale) }
     }
 
     private func place(_ window: NSWindow?, _ frame: LlampFrame, _ origin: NSPoint, _ scale: CGFloat) {

@@ -11,10 +11,14 @@ fn resize_rejects_a_mid_step_drag() {
     assert_eq!(window.size(), (275, 116));
     window.propose_size(300, 145).expect("25 and 29");
     assert_eq!(window.size(), (300, 145));
-    let err = window.propose_size(310, 145).expect_err("10 px is not a 25 px step");
+    let err = window
+        .propose_size(310, 145)
+        .expect_err("10 px is not a 25 px step");
     assert!(err.contains("25"), "{err}");
     assert_eq!(window.size(), (300, 145), "a rejected drag must not apply");
-    let err = window.propose_size(300, 150).expect_err("5 px is not a 29 px step");
+    let err = window
+        .propose_size(300, 150)
+        .expect_err("5 px is not a 29 px step");
     assert!(err.contains("29"), "{err}");
     assert!(window.propose_size(274, 116).is_err());
 }
@@ -23,7 +27,10 @@ fn resize_rejects_a_mid_step_drag() {
 fn ten_thousand_rows_expose_only_the_visible_window() {
     let window = PlaylistWindow::new();
     let range = window.visible_range(10_000, 0);
-    assert!(range.end <= range.start + 20, "viewport must not include every row: {range:?}");
+    assert!(
+        range.end <= range.start + 20,
+        "viewport must not include every row: {range:?}"
+    );
     assert!(range.end < 10_000);
     assert_eq!(window.hit_row(14, 0, 10_000), Some(0));
     assert_eq!(window.hit_row(21, 40, 10_000), Some(41));

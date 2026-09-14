@@ -9,16 +9,13 @@ use llamp_audio::tags::{self, AppliedGain, GainTags, LoftySource, ReplayGainSour
 fn lofty_replaygain_field_names_round_trip() {
     let dir = fixtures::dir("rg");
     let path = fixtures::write_wav_tone(&dir, "tagged.wav", 48_000, 4_800, 440.0);
-    fixtures::write_replaygain(
-        &path,
-        "-6.5 dB",
-        "0.9",
-        "-8.25 dB",
-        "1.0",
-        "album-1",
-    );
+    fixtures::write_replaygain(&path, "-6.5 dB", "0.9", "-8.25 dB", "1.0", "album-1");
     let tags = LoftySource.read(&path).expect("read tags");
-    assert_eq!(tags.track_gain_db, Some(-6.5), "REPLAYGAIN_TRACK_GAIN did not round-trip");
+    assert_eq!(
+        tags.track_gain_db,
+        Some(-6.5),
+        "REPLAYGAIN_TRACK_GAIN did not round-trip"
+    );
     assert!((tags.track_peak.unwrap() - 0.9).abs() < 1e-4);
     assert_eq!(tags.album_gain_db, Some(-8.25));
     assert!((tags.album_peak.unwrap() - 1.0).abs() < 1e-4);
@@ -73,6 +70,10 @@ fn album_when_shared_otherwise_track_and_peak_caps() {
     let missing = tags::select_gain(&GainTags::default(), None, 0.0);
     assert_eq!(
         missing,
-        AppliedGain { db: 0.0, used_replaygain: false, used_album: false }
+        AppliedGain {
+            db: 0.0,
+            used_replaygain: false,
+            used_album: false
+        }
     );
 }

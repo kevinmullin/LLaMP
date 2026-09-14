@@ -42,6 +42,7 @@ pub struct PlaybackSnapshot {
     pub produces_pcm: u8,
     pub volume_ppm: u16,
     pub balance_ppm: u16,
+    pub kbps: u16,
     pub title_len: u16,
     pub title: [u8; TITLE_CAP],
 }
@@ -64,6 +65,7 @@ impl Default for PlaybackSnapshot {
             produces_pcm: 1,
             volume_ppm: 0,
             balance_ppm: 500,
+            kbps: 0,
             title_len: 0,
             title: [0; TITLE_CAP],
         }
@@ -139,6 +141,7 @@ impl Session {
             snap.source_channels = channels;
             snap.transport = TRANSPORT_STOPPED;
             snap.position_frames = 0;
+            snap.kbps = 0;
             copy_title(snap, title);
         });
     }
@@ -196,6 +199,7 @@ impl Session {
             decoded.source_channels,
             title.as_bytes(),
         );
+        self.set_kbps(decoded.kbps);
         if let Ok(mut eq) = self.eq.lock() {
             eq.note_track(&title);
         }
@@ -219,6 +223,10 @@ impl Session {
             Ordering::Relaxed,
         );
         self.snap.write(|snap| snap.transport = TRANSPORT_STOPPED);
+    }
+
+    pub fn set_kbps(&self, kbps: u16) {
+        self.snap.write(|snap| snap.kbps = kbps.min(999));
     }
 
     /// `delta` is frames, not skin pixels. Arrow keys pass `±sample_rate * ARROW_SEEK_SECONDS`.

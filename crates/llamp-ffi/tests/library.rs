@@ -37,7 +37,10 @@ fn grant_search_enqueue_keeps_the_granted_path() {
     let db_c = CString::new(db.to_string_lossy().as_ref()).expect("db");
     let dir_c = CString::new(music.to_string_lossy().as_ref()).expect("dir");
     let q = CString::new("song").expect("q");
-    assert_eq!(llamp_ffi::llamp_library_open(db_c.as_ptr()), llamp_ffi::LLAMP_OK);
+    assert_eq!(
+        llamp_ffi::llamp_library_open(db_c.as_ptr()),
+        llamp_ffi::LLAMP_OK
+    );
     assert_eq!(llamp_ffi::llamp_library_grant(dir_c.as_ptr()), 1);
     assert_eq!(llamp_ffi::llamp_library_search(q.as_ptr()), 1);
     let mut buf = [0i8; 512];

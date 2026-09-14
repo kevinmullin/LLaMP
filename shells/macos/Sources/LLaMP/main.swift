@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var equalizer: EqWindow?
     private var playlist: PlaylistWindow?
     private var browser: BrowserWindow?
+    private var visualizer: VisWindow?
     private let started = ContinuousClock.now
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -31,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.onOpenEqualizer = { [weak self] in self?.openEqualizer() }
         window.onOpenPlaylist = { [weak self] in self?.openPlaylist() }
         window.onOpenBrowser = { [weak self] in self?.openBrowser() }
+        window.onOpenVisualizer = { [weak self] in self?.openVisualizer() }
         if let skin = argumentValue("--skin"), let data = try? Data(contentsOf: URL(fileURLWithPath: skin)), !data.isEmpty {
             window.loadSkin(data)
         }
@@ -48,6 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if CommandLine.arguments.contains("--show-browser") {
             openBrowser()
+        }
+        if CommandLine.arguments.contains("--show-vis") {
+            openVisualizer()
         }
         if let track = argumentValue("--play") {
             let refs = argumentValue("--refs") ?? FileManager.default.temporaryDirectory.path
@@ -112,6 +117,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         browser?.reloadGranted()
         browser?.orderFront(nil)
+    }
+
+    private func openVisualizer() {
+        if visualizer == nil {
+            let window = VisWindow()
+            visualizer = window
+            WindowDock.shared.attach(visualizer: window)
+        }
+        visualizer?.orderFront(nil)
     }
 }
 

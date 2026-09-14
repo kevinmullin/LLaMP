@@ -15,7 +15,8 @@ pub mod tags;
 pub mod wav;
 
 pub use eq::{
-    band_target_db, drag_band, drag_preamp, preamp_target_db, set_eq_enabled, set_eq_sweep_band, sweep_band_at,
+    band_target_db, drag_band, drag_preamp, preamp_target_db, set_eq_enabled, set_eq_sweep_band,
+    sweep_band_at,
 };
 pub use graph::{band_sweep_ratios, Stage};
 

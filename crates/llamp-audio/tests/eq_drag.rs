@@ -48,16 +48,18 @@ fn cli_playback_band_sweep_is_audible() {
     let path = dir.join("sweep.wav");
     let rate = 48_000u32;
     let pcm = sweep_pcm(rate);
-    llamp_audio::wav::write_wav(&path, rate, &pcm, llamp_audio::wav::WavBits::F32).expect("write sweep");
+    llamp_audio::wav::write_wav(&path, rate, &pcm, llamp_audio::wav::WavBits::F32)
+        .expect("write sweep");
     let decoded = llamp_audio::decode::decode_path(&path).expect("llamp play decodes this file");
     assert_eq!(decoded.sample_rate, rate);
-    let ratios = llamp_audio::band_sweep_ratios(&decoded.frames, decoded.sample_rate, |band, db| {
-        if db >= 12.0 {
-            llamp_audio::set_eq_sweep_band(band);
-        } else {
-            llamp_audio::drag_band(band, db);
-        }
-    });
+    let ratios =
+        llamp_audio::band_sweep_ratios(&decoded.frames, decoded.sample_rate, |band, db| {
+            if db >= 12.0 {
+                llamp_audio::set_eq_sweep_band(band);
+            } else {
+                llamp_audio::drag_band(band, db);
+            }
+        });
     for (band, ratio) in ratios.iter().enumerate() {
         assert!(
             *ratio > 2.0,

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use llamp_plugin_api::{Manifest, MediaSource, Refuse, HOST_ABI};
 
 pub mod sandbox;
+pub mod vis_budget;
 
 /// Native first-party hot reload is a dev-build demo. A notarized binary with a
 /// hardened runtime does not dlopen a rebuilt dylib. 1.0 is disable and enable

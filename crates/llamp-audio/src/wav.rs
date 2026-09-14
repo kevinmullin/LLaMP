@@ -10,7 +10,12 @@ pub enum WavBits {
     Pcm16,
 }
 
-pub fn write_wav(path: &Path, sample_rate: u32, interleaved: &[f32], bits: WavBits) -> io::Result<()> {
+pub fn write_wav(
+    path: &Path,
+    sample_rate: u32,
+    interleaved: &[f32],
+    bits: WavBits,
+) -> io::Result<()> {
     let channels = 2u16;
     let (format, bytes_per_sample): (u16, u16) = match bits {
         WavBits::Pcm16 => (1, 2),

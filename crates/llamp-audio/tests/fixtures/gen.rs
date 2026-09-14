@@ -3,7 +3,7 @@
 
 use std::fs::File;
 use std::io::Write;
-use std::num::{NonZeroU8, NonZeroU32};
+use std::num::{NonZeroU32, NonZeroU8};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -48,15 +48,24 @@ pub fn write_flac_tone(dir: &Path, name: &str, rate: u32, frames: u64, hz: f32) 
     let samples: Vec<i32> = pcm.iter().map(|s| (s * 32767.0).round() as i32).collect();
     let source = MemSource::from_samples(&samples, 2, 16, rate as usize);
     let config = Encoder::default().into_verified().expect("flac config");
-    let mut stream = flacenc::encode_with_fixed_block_size(&config, source, 4096).expect("flac encode");
+    let mut stream =
+        flacenc::encode_with_fixed_block_size(&config, source, 4096).expect("flac encode");
     // Last frame is shorter, so flacenc records min != max, but the frames are fixed-block.
     // Symphonia rejects that combination. The spec allows the last frame to be shorter than min.
-    stream.stream_info_mut().set_block_sizes(4096, 4096).expect("flac block size");
+    stream
+        .stream_info_mut()
+        .set_block_sizes(4096, 4096)
+        .expect("flac block size");
     let mut sink = MemSink::new();
     stream.write(&mut sink).expect("flac write");
     std::fs::write(&path, sink.as_slice()).expect("flac file");
     // flacenc writes the source length into STREAMINFO and adds no priming.
-    Encoded { path, playable_frames: frames, encoder_delay: Some(0), encoder_padding: Some(0) }
+    Encoded {
+        path,
+        playable_frames: frames,
+        encoder_delay: Some(0),
+        encoder_padding: Some(0),
+    }
 }
 
 pub fn write_mp3_tone(dir: &Path, name: &str, rate: u32, frames: u64, hz: f32) -> Encoded {
@@ -84,9 +93,19 @@ pub fn write_mp3_tone(dir: &Path, name: &str, rate: u32, frames: u64, hz: f32) -
         .expect("build lame");
     let mut mp3 = Vec::new();
     mp3.reserve(mp3lame_encoder::max_required_buffer_size(left.len()));
-    encoder.encode_to_vec(DualPcm { left: &left, right: &right }, &mut mp3).expect("encode mp3");
+    encoder
+        .encode_to_vec(
+            DualPcm {
+                left: &left,
+                right: &right,
+            },
+            &mut mp3,
+        )
+        .expect("encode mp3");
     mp3.reserve(7200);
-    encoder.flush_to_vec::<FlushGap>(&mut mp3).expect("flush mp3");
+    encoder
+        .flush_to_vec::<FlushGap>(&mut mp3)
+        .expect("flush mp3");
     let mut tag = Vec::new();
     tag.reserve(encoder.lame_tag_size());
     if let Some(written) = encoder.lame_tag_encode_to_vec(&mut tag) {
@@ -98,7 +117,12 @@ pub fn write_mp3_tone(dir: &Path, name: &str, rate: u32, frames: u64, hz: f32) -
     }
     std::fs::write(&path, &mp3).expect("mp3 file");
     let (delay, padding) = parse_lame_delay(&mp3);
-    Encoded { path, playable_frames: frames, encoder_delay: delay, encoder_padding: padding }
+    Encoded {
+        path,
+        playable_frames: frames,
+        encoder_delay: delay,
+        encoder_padding: padding,
+    }
 }
 
 pub fn write_vorbis_tone(dir: &Path, name: &str, rate: u32, frames: u64, hz: f32) -> Encoded {
@@ -119,7 +143,9 @@ pub fn write_vorbis_tone(dir: &Path, name: &str, rate: u32, frames: u64, hz: f32
     .expect("vorbis builder")
     .build()
     .expect("vorbis encoder");
-    encoder.encode_audio_block([&left, &right]).expect("vorbis encode");
+    encoder
+        .encode_audio_block([&left, &right])
+        .expect("vorbis encode");
     encoder.finish().expect("vorbis finish");
     let granule = last_ogg_granule(&path);
     let extra = granule.saturating_sub(frames);
@@ -173,12 +199,24 @@ pub fn write_alac_tone(dir: &Path, name: &str, wav: &Path) -> Encoded {
 }
 
 pub fn afconvert(input: &Path, output: &Path, args: &[&str]) -> PathBuf {
-    let status = Command::new("afconvert").arg(input).args(args).arg(output).status().expect("afconvert");
+    let status = Command::new("afconvert")
+        .arg(input)
+        .args(args)
+        .arg(output)
+        .status()
+        .expect("afconvert");
     assert!(status.success(), "afconvert {:?} failed", args);
     output.to_path_buf()
 }
 
-pub fn write_replaygain(path: &Path, track: &str, peak: &str, album: &str, album_peak: &str, album_id: &str) {
+pub fn write_replaygain(
+    path: &Path,
+    track: &str,
+    peak: &str,
+    album: &str,
+    album_peak: &str,
+    album_id: &str,
+) {
     use lofty::config::WriteOptions;
     use lofty::file::{AudioFile, TaggedFileExt};
     use lofty::tag::{ItemKey, Tag, TagType};
@@ -195,7 +233,9 @@ pub fn write_replaygain(path: &Path, track: &str, peak: &str, album: &str, album
         tag.insert_text(ItemKey::ReplayGainAlbumPeak, album_peak.to_string());
         tag.insert_text(ItemKey::MusicBrainzReleaseId, album_id.to_string());
     }
-    tagged.save_to_path(path, WriteOptions::default()).expect("save tags");
+    tagged
+        .save_to_path(path, WriteOptions::default())
+        .expect("save tags");
 }
 
 pub fn source_sample(rate: u32, frame: u64, hz: f32) -> f32 {
@@ -203,10 +243,12 @@ pub fn source_sample(rate: u32, frame: u64, hz: f32) -> f32 {
 }
 
 fn tone(rate: u32, frames: u64, hz: f32) -> Vec<f32> {
-    (0..frames).flat_map(|i| {
-        let s = source_sample(rate, i, hz);
-        [s, s]
-    }).collect()
+    (0..frames)
+        .flat_map(|i| {
+            let s = source_sample(rate, i, hz);
+            [s, s]
+        })
+        .collect()
 }
 
 fn last_ogg_granule(path: &Path) -> u64 {
@@ -231,8 +273,12 @@ fn afinfo_counts(path: &Path) -> (u64, u32, u32) {
         let Some(rest) = line.trim().strip_prefix("audio ") else {
             continue;
         };
-        let mut nums = rest.split(|c: char| !c.is_ascii_digit()).filter(|s| !s.is_empty());
-        if let (Some(valid), Some(priming), Some(remainder)) = (nums.next(), nums.next(), nums.next()) {
+        let mut nums = rest
+            .split(|c: char| !c.is_ascii_digit())
+            .filter(|s| !s.is_empty());
+        if let (Some(valid), Some(priming), Some(remainder)) =
+            (nums.next(), nums.next(), nums.next())
+        {
             return (
                 valid.parse().expect("valid frames"),
                 priming.parse().expect("priming"),
@@ -240,14 +286,18 @@ fn afinfo_counts(path: &Path) -> (u64, u32, u32) {
             );
         }
     }
-    panic!("afinfo did not report valid/priming/remainder for {}", path.display());
+    panic!(
+        "afinfo did not report valid/priming/remainder for {}",
+        path.display()
+    );
 }
 
 fn write_pcm16_wav(path: &Path, rate: u32, interleaved: &[f32]) {
     let data_bytes = interleaved.len() * 2;
     let mut file = File::create(path).expect("wav");
     file.write_all(b"RIFF").unwrap();
-    file.write_all(&(36 + data_bytes as u32).to_le_bytes()).unwrap();
+    file.write_all(&(36 + data_bytes as u32).to_le_bytes())
+        .unwrap();
     file.write_all(b"WAVEfmt ").unwrap();
     file.write_all(&16u32.to_le_bytes()).unwrap();
     file.write_all(&1u16.to_le_bytes()).unwrap();
@@ -309,17 +359,27 @@ fn parse_lame_delay(bytes: &[u8]) -> (Option<u32>, Option<u32>) {
 
 fn write_ogg_opus(mut file: File, rate: u32, interleaved: &[f32]) -> u16 {
     let mut error = 0;
-    let encoder = unsafe { opusic_sys::opus_encoder_create(48_000, 2, opusic_sys::OPUS_APPLICATION_AUDIO, &mut error) };
+    let encoder = unsafe {
+        opusic_sys::opus_encoder_create(48_000, 2, opusic_sys::OPUS_APPLICATION_AUDIO, &mut error)
+    };
     assert_eq!(error, opusic_sys::OPUS_OK);
     let mut pre_skip = 0i32;
     unsafe {
-        opusic_sys::opus_encoder_ctl(encoder, opusic_sys::OPUS_GET_LOOKAHEAD_REQUEST, &mut pre_skip);
+        opusic_sys::opus_encoder_ctl(
+            encoder,
+            opusic_sys::OPUS_GET_LOOKAHEAD_REQUEST,
+            &mut pre_skip,
+        );
     }
     let head = opus_head(2, pre_skip as u16, rate);
     let tags = opus_tags();
     let mut writer = PacketWriter::new(&mut file);
-    writer.write_packet(head, 1, PacketWriteEndInfo::EndPage, 0).expect("opus head");
-    writer.write_packet(tags, 1, PacketWriteEndInfo::EndPage, 0).expect("opus tags");
+    writer
+        .write_packet(head, 1, PacketWriteEndInfo::EndPage, 0)
+        .expect("opus head");
+    writer
+        .write_packet(tags, 1, PacketWriteEndInfo::EndPage, 0)
+        .expect("opus tags");
     let frame = 960usize;
     let content = interleaved.len() / 2;
     // Feed lookahead zeros so the encoder delay line emits the last content samples.
@@ -334,16 +394,29 @@ fn write_ogg_opus(mut file: File, rate: u32, interleaved: &[f32]) -> u16 {
         let from_content = cursor.min(content);
         let content_n = content.saturating_sub(cursor).min(n);
         if content_n > 0 {
-            block[..content_n * 2].copy_from_slice(&interleaved[from_content * 2..(from_content + content_n) * 2]);
+            block[..content_n * 2]
+                .copy_from_slice(&interleaved[from_content * 2..(from_content + content_n) * 2]);
         }
         let written = unsafe {
-            opusic_sys::opus_encode_float(encoder, block.as_ptr(), frame as i32, packet.as_mut_ptr(), packet.len() as i32)
+            opusic_sys::opus_encode_float(
+                encoder,
+                block.as_ptr(),
+                frame as i32,
+                packet.as_mut_ptr(),
+                packet.len() as i32,
+            )
         };
         assert!(written > 0, "opus encode {written}");
         cursor += n;
         granule = (granule + n as u64).min(end_granule);
-        let end = if cursor >= total { PacketWriteEndInfo::EndStream } else { PacketWriteEndInfo::NormalPacket };
-        writer.write_packet(packet[..written as usize].to_vec(), 1, end, granule).expect("opus page");
+        let end = if cursor >= total {
+            PacketWriteEndInfo::EndStream
+        } else {
+            PacketWriteEndInfo::NormalPacket
+        };
+        writer
+            .write_packet(packet[..written as usize].to_vec(), 1, end, granule)
+            .expect("opus page");
     }
     unsafe { opusic_sys::opus_encoder_destroy(encoder) };
     pre_skip as u16

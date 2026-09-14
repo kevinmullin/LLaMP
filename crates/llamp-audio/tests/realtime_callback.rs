@@ -38,7 +38,11 @@ fn callback_and_fft_hop_stay_clean() {
     let pcm = vec![0f32; FftTap::WINDOW * 2];
     realtime::assert_section_clean(|| {
         callback.fill(&mut out);
-        assert_eq!(callback.underruns(), 1, "empty ring writes silence and counts one underrun");
+        assert_eq!(
+            callback.underruns(),
+            1,
+            "empty ring writes silence and counts one underrun"
+        );
         assert!(out.iter().all(|s| *s == 0.0));
         let _ = tap.push(&pcm);
     });

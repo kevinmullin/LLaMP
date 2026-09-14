@@ -9,6 +9,7 @@ public final class MainWindow: NSWindow {
     public var onOpenEqualizer: (() -> Void)?
     public var onOpenPlaylist: (() -> Void)?
     public var onOpenBrowser: (() -> Void)?
+    public var onOpenVisualizer: (() -> Void)?
     private var marqueeSkip: UInt32 = 0
     private var lastPull = ""
     private var displayTimer: Timer?
@@ -93,6 +94,8 @@ public final class MainWindow: NSWindow {
             onOpenPlaylist?()
         case "Eject":
             onOpenBrowser?()
+        case "Clutter V", "Visualizer pane":
+            onOpenVisualizer?()
         case "Minimize":
             miniaturize(nil)
         default:

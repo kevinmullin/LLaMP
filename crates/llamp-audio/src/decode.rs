@@ -44,6 +44,9 @@ pub struct Decoded {
     pub delay: Option<u32>,
     pub padding: Option<u32>,
     pub codec: CodecId,
+    /// Kilobits per second. Symphonia 0.6 has no `bits_per_second`; PCM uses
+    /// `bits_per_sample * rate * channels`, compressed uses file bits / duration.
+    pub kbps: u16,
 }
 
 #[derive(Debug)]
@@ -81,17 +84,29 @@ pub fn decode_path(path: &Path) -> Result<Decoded, DecodeError> {
     decode_file(file, codec_hint, path)
 }
 
-fn decode_file(file: File, hint_codec: Option<CodecId>, path: &Path) -> Result<Decoded, DecodeError> {
+fn decode_file(
+    file: File,
+    hint_codec: Option<CodecId>,
+    path: &Path,
+) -> Result<Decoded, DecodeError> {
     let limited = LimitedFile { file, len: None };
     let len = limited.file.metadata().ok().map(|m| m.len());
-    let limited = LimitedFile { file: limited.file, len };
+    let limited = LimitedFile {
+        file: limited.file,
+        len,
+    };
     let mss = MediaSourceStream::new(Box::new(limited), Default::default());
     let mut hint = Hint::new();
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         hint.with_extension(ext);
     }
     let mut format = symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|err| DecodeError::Audio(format!("probe: {err}")))?;
     let track = format
         .default_track(TrackType::Audio)
@@ -114,7 +129,8 @@ fn decode_file(file: File, hint_codec: Option<CodecId>, path: &Path) -> Result<D
 
     let mut planar = Vec::new();
     let mut rate = audio.sample_rate.unwrap_or(0);
-    let mut channels = audio.channels.map(|c| c.count()).unwrap_or(0);
+    let bits_per_sample = audio.bits_per_sample;
+    let mut channels = audio.channels.as_ref().map(|c| c.count()).unwrap_or(0);
     loop {
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
@@ -146,6 +162,7 @@ fn decode_file(file: File, hint_codec: Option<CodecId>, path: &Path) -> Result<D
     let end = end.min(frames as u64) as usize;
     let end = end.min(frames.saturating_sub(start));
     let kept = &stereo[start * 2..stereo.len() - end * 2];
+    let frames_kept = kept.len() / 2;
     Ok(Decoded {
         sample_rate: rate,
         frames: kept.to_vec(),
@@ -153,7 +170,37 @@ fn decode_file(file: File, hint_codec: Option<CodecId>, path: &Path) -> Result<D
         delay,
         padding,
         codec,
+        kbps: bitrate_kbps(codec, bits_per_sample, len, frames_kept, rate, channels as u16),
     })
+}
+
+fn bitrate_kbps(
+    codec: CodecId,
+    bits_per_sample: Option<u32>,
+    file_len: Option<u64>,
+    frames: usize,
+    rate: u32,
+    channels: u16,
+) -> u16 {
+    match codec {
+        CodecId::Wav | CodecId::Aiff => {
+            let bps = bits_per_sample.unwrap_or(16);
+            ((u64::from(rate) * u64::from(channels) * u64::from(bps)) / 1000).min(999) as u16
+        }
+        _ => {
+            let Some(len) = file_len else {
+                return 0;
+            };
+            if rate == 0 || frames == 0 {
+                return 0;
+            }
+            let ms = (frames as u64).saturating_mul(1000) / u64::from(rate);
+            if ms == 0 {
+                return 0;
+            }
+            ((len.saturating_mul(8)) / ms).min(999) as u16
+        }
+    }
 }
 
 fn append_buffer(
@@ -194,7 +241,12 @@ fn classify(id: AudioCodecId, hint: Option<CodecId>) -> CodecId {
 }
 
 fn codec_from_extension(path: &Path) -> Option<CodecId> {
-    match path.extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase()).as_deref() {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .as_deref()
+    {
         Some("wav") => Some(CodecId::Wav),
         Some("aif") | Some("aiff") => Some(CodecId::Aiff),
         Some("mp3") => Some(CodecId::Mp3),
@@ -223,20 +275,37 @@ pub struct SeekLanding {
 
 pub fn seek_to(path: &Path, frame: u64, period: u32) -> Result<SeekLanding, DecodeError> {
     let file = File::open(path)?;
-    let limited = LimitedFile { file, len: file_len(path) };
+    let limited = LimitedFile {
+        file,
+        len: file_len(path),
+    };
     let mss = MediaSourceStream::new(Box::new(limited), Default::default());
     let mut hint = Hint::new();
     if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         hint.with_extension(ext);
     }
     let mut format = symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|err| DecodeError::Audio(format!("{err:?}")))?;
-    let track = format.default_track(TrackType::Audio).ok_or_else(|| DecodeError::Audio("no audio track".into()))?;
-    let audio = track.codec_params.as_ref().and_then(|p| p.audio()).cloned().ok_or_else(|| DecodeError::Audio("missing audio parameters".into()))?;
+    let track = format
+        .default_track(TrackType::Audio)
+        .ok_or_else(|| DecodeError::Audio("no audio track".into()))?;
+    let audio = track
+        .codec_params
+        .as_ref()
+        .and_then(|p| p.audio())
+        .cloned()
+        .ok_or_else(|| DecodeError::Audio("missing audio parameters".into()))?;
     let track_id = track.id;
     let opts = AudioDecoderOptions::default().gapless(false);
-    let mut decoder = codecs().make_audio_decoder(&audio, &opts).map_err(|err| DecodeError::Audio(format!("{err:?}")))?;
+    let mut decoder = codecs()
+        .make_audio_decoder(&audio, &opts)
+        .map_err(|err| DecodeError::Audio(format!("{err:?}")))?;
     let seeked = format.seek(
         symphonia::core::formats::SeekMode::Accurate,
         symphonia::core::formats::SeekTo::Timestamp {
@@ -285,12 +354,18 @@ pub fn seek_to(path: &Path, frame: u64, period: u32) -> Result<SeekLanding, Deco
             break;
         }
     }
-    let first_sample = first.ok_or_else(|| DecodeError::Audio("seek produced no samples".into()))?;
+    let first_sample =
+        first.ok_or_else(|| DecodeError::Audio("seek produced no samples".into()))?;
     let err = (landed as i64 - frame as i64).abs();
     if err > i64::from(period) {
-        return Err(DecodeError::Audio(format!("seek landed {err} frames away, period is {period}")));
+        return Err(DecodeError::Audio(format!(
+            "seek landed {err} frames away, period is {period}"
+        )));
     }
-    Ok(SeekLanding { frame: landed, first_sample })
+    Ok(SeekLanding {
+        frame: landed,
+        first_sample,
+    })
 }
 
 fn file_len(path: &Path) -> Option<u64> {

@@ -47,7 +47,11 @@ fn buffer_is_64kb_and_free_rejects_double_free() {
     assert_eq!(bytes[BUF_LEN - 1], 0x5A);
 
     assert_eq!(llamp_ffi::llamp_buffer_free(buf.data), llamp_ffi::LLAMP_OK);
-    assert_eq!(live_64k(), before, "llamp_buffer_free leaked the 64KB block");
+    assert_eq!(
+        live_64k(),
+        before,
+        "llamp_buffer_free leaked the 64KB block"
+    );
 
     assert_eq!(
         llamp_ffi::llamp_buffer_free(buf.data),

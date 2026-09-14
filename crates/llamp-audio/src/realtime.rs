@@ -112,7 +112,11 @@ pub fn assert_section_catches(kind: Violation, body: impl FnOnce()) {
     }
     clear_violations();
     with_realtime(body);
-    assert!(saw(kind), "realtime hook did not record {kind:?}; saw {:?}", violations());
+    assert!(
+        saw(kind),
+        "realtime hook did not record {kind:?}; saw {:?}",
+        violations()
+    );
 }
 
 pub fn assert_section_clean(body: impl FnOnce()) {
@@ -139,7 +143,10 @@ fn spawn_child(mode: &str) -> bool {
     if !status.status.success() {
         let stdout = String::from_utf8_lossy(&status.stdout);
         let stderr = String::from_utf8_lossy(&status.stderr);
-        panic!("realtime child failed ({}):\n{stdout}\n{stderr}", status.status);
+        panic!(
+            "realtime child failed ({}):\n{stdout}\n{stderr}",
+            status.status
+        );
     }
     true
 }

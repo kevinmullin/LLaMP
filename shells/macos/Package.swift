@@ -7,6 +7,8 @@ let audioFrameworks: [LinkerSetting] = [
     .linkedFramework("AudioToolbox"),
     .linkedFramework("CoreAudio"),
     .linkedFramework("CoreFoundation"),
+    .linkedFramework("Metal"),
+    .linkedFramework("QuartzCore"),
 ]
 
 let package = Package(

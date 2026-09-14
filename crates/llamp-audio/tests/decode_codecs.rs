@@ -51,7 +51,11 @@ fn aac_isomp4_and_adts_both_decode() {
     assert_eq!(iso.sample_rate, RATE);
     assert_eq!(raw.sample_rate, RATE);
     assert!(iso.frames.len() / 2 > 0);
-    assert_eq!(iso.frames.len(), raw.frames.len(), "both containers, one frame count");
+    assert_eq!(
+        iso.frames.len(),
+        raw.frames.len(),
+        "both containers, one frame count"
+    );
 }
 
 #[test]
@@ -74,7 +78,8 @@ fn downmix_constants_are_locked() {
 }
 
 fn assert_decoded(path: &Path, codec: CodecId, rate: u32, frames: u64) {
-    let decoded = decode::decode_path(path).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
+    let decoded =
+        decode::decode_path(path).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
     assert_eq!(decoded.codec, codec);
     assert_eq!(decoded.sample_rate, rate);
     assert_eq!(decoded.frames.len() / 2, frames as usize);

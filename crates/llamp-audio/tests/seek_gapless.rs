@@ -93,7 +93,11 @@ fn assert_gapless_boundary(a: &Encoded, b: &Encoded, hz_a: f32, hz_b: f32, lossl
         );
     }
     let at = a.playable_frames as usize;
-    assert!(at >= BOUNDARY && got >= at + BOUNDARY, "{} too short to see the boundary", a.path.display());
+    assert!(
+        at >= BOUNDARY && got >= at + BOUNDARY,
+        "{} too short to see the boundary",
+        a.path.display()
+    );
     let before = &joined[(at - BOUNDARY) * 2..at * 2];
     let after = &joined[at * 2..(at + BOUNDARY) * 2];
     let a_before = goertzel(before, hz_a);
@@ -140,7 +144,10 @@ fn assert_gapless_boundary(a: &Encoded, b: &Encoded, hz_a: f32, hz_b: f32, lossl
 }
 
 fn encoder_extra(encoded: &Encoded) -> u32 {
-    encoded.encoder_delay.unwrap_or(0).saturating_add(encoded.encoder_padding.unwrap_or(0))
+    encoded
+        .encoder_delay
+        .unwrap_or(0)
+        .saturating_add(encoded.encoder_padding.unwrap_or(0))
 }
 
 fn goertzel(interleaved: &[f32], hz: f32) -> f32 {
@@ -165,9 +172,10 @@ fn mp3_gapless_uses_surfaced_lame_fields_or_is_absent() {
     let (Some(raw_delay), Some(raw_padding)) = (made.encoder_delay, made.encoder_padding) else {
         panic!("fixture encoder did not write a LAME delay; cannot investigate");
     };
-    let delay_ok = info.delay == Some(raw_delay) || info.delay == Some(raw_delay.saturating_add(529));
-    let padding_ok = info.padding == Some(raw_padding)
-        || info.padding == Some(raw_padding.saturating_sub(529));
+    let delay_ok =
+        info.delay == Some(raw_delay) || info.delay == Some(raw_delay.saturating_add(529));
+    let padding_ok =
+        info.padding == Some(raw_padding) || info.padding == Some(raw_padding.saturating_sub(529));
     assert!(
         delay_ok && padding_ok,
         "symphonia did not surface the LAME tag (raw delay {raw_delay}, raw padding {raw_padding}); got delay {:?} padding {:?}",

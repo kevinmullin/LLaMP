@@ -116,6 +116,17 @@ Done locally on 2026-09-14. `cargo test --workspace --locked` passed after this 
 - First-party disable/enable while the callback keeps filling: `crates/llamp-plugin-host/tests/hot_reload.rs`. The phase 1 allocator hook still passes. The DSP slot is a no-op `fn(&mut [f32])` between EQ and the limiter; it is swapped at a buffer boundary, not from the callback. Native dylib hot reload is a dev-build demo. A notarized binary with a hardened runtime does not `dlopen` a rebuilt dylib. 1.0 is disable and enable without an audio drop (`NATIVE_RELOAD_POLICY`).
 - C names pinned by cbindgen 0.29.4: `llamp_plugin_count`, `llamp_plugin_id`, `llamp_plugin_enable`, `llamp_plugin_disable`, `llamp_plugin_refused_reason`. `LlampPlayback` also publishes `produces_pcm`.
 
+## 7 — visualizer window
+
+Done locally on 2026-09-14. Not a phase-7 exit until CI is green with the new header and the Swift vis tests.
+
+- 7a. Layer lifetime is a generation plus explicit invalidate. Use after replace or invalidate returns `LLAMP_ERR_INVALID` and does not read the stored pointer. Forgotten teardown with no further FFI call is undetectable without retaining the layer; that is the finding in `docs/investigations/wgpu-layer-lifetime.md`. wgpu **30.0.1** has no `CoreAnimationLayer` surface target. The layer pointer still crosses inward. The view pointer opens wgpu via `RawHandle`. The core does not treat them as one object.
+- 7b. Fifth window. `gen` chrome owns the border (8/14/8/8). The wgpu `NSView` is the client hole. Fullscreen hides chrome. Snap group is five panes (10 / 12). `llamp_gen_blit` is unchanged (browser, 275×116). Sized chrome is `llamp_vis_chrome_blit`.
+- 7c. Frame packet pulls the existing 1024/Hann/512 tap. Linear bins are 513 (Nyquist included). Log bands are `pane.w / VIS_BAR_W`. Onset is 0 until a click-track fixture exists. Kill is `VisBudget` on the render thread. A 50 ms fake-clock triple miss kills. The callback fill stays on `llamp-callback` and the allocator hook still passes.
+- 7d. First-party presets `Flux` and `Pulse` (`preset.json` + `vs_main`/`fs_main`). Occluded present does not increment `llamp_vis_gpu_submits`. The 76×16 pane is still a CPU `viscolor.txt` blit.
+- 7e. `llamp_skin_blit_display` stamps `snap.kbps`, `sample_rate / 1000`, and hop log-bands when `vis_mode != 0` and `produces_pcm`. Symphonia 0.6 has no `bits_per_second`. PCM kbps is `bits_per_sample * rate * channels / 1000`. Compressed kbps is file bits / decoded duration.
+- Milkdrop cost note: `docs/investigations/milkdrop-cost.md`. `mbrukman/winamp-macos` (`main`) claims fullscreen Milkdrop and links nothing: empty SPM deps, empty Xcode Frameworks phase, SwiftUI `Canvas` titled Milkdrop, no `.milk`. ADR 010 cost is unchanged. No `.milk` loading was added. `pzzzy/macwamp` was not opened.
+
 ## Carry-forward debt, pre-phase-6
 
 Closed before phase 6. Green run on `34747c1`: https://github.com/kevinmullin/LLaMP/actions/runs/34868736118.

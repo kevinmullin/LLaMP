@@ -23,7 +23,11 @@ pub fn fold_to_stereo(interleaved: &[f32], channels: u16) -> Vec<f32> {
         }
         return out;
     }
-    let k = if channels > 2 { EXTRA_CHANNEL_COEFF } else { 0.0 };
+    let k = if channels > 2 {
+        EXTRA_CHANNEL_COEFF
+    } else {
+        0.0
+    };
     for frame in 0..frames {
         let base = frame * channels;
         let mut left = interleaved[base];

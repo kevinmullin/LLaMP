@@ -56,7 +56,10 @@ impl OutputEvents {
 
     pub fn record_period(&self, frames: u32) {
         self.period_frames.store(frames, Ordering::Relaxed);
-        self.period_outside.store(frames < PERIOD_MIN || frames > PERIOD_MAX, Ordering::Relaxed);
+        self.period_outside.store(
+            frames < PERIOD_MIN || frames > PERIOD_MAX,
+            Ordering::Relaxed,
+        );
     }
 
     pub fn take_loss(&self) -> Option<OutputEvent> {

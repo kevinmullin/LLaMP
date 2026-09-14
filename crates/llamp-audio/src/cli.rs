@@ -12,6 +12,7 @@ use rtrb::RingBuffer;
 use rubato::audioadapter_buffers::direct::InterleavedSlice;
 use rubato::{Fft, FixedSync, Indexing, Resampler};
 
+use crate::analysis::{self, FftTap, FrameHop};
 use crate::cpal_output::CpalOutput;
 use crate::decode;
 use crate::live::{self, PCM_WINDOW};
@@ -49,15 +50,25 @@ pub fn play_loop(input: &Path, events: Arc<OutputEvents>) -> Result<LoopPlayback
     let capacity = output::ring_capacity(host_rate, 2);
     let (producer, consumer) = RingBuffer::new(capacity);
     let mut backend = CpalOutput::new();
-    let request = StreamRequest { device_id: None, sample_rate: host_rate, channels: 2 };
-    let stream = backend.open(request, consumer, events).map_err(|err| err.to_string())?;
+    let request = StreamRequest {
+        device_id: None,
+        sample_rate: host_rate,
+        channels: 2,
+    };
+    let stream = backend
+        .open(request, consumer, events)
+        .map_err(|err| err.to_string())?;
     let stop = Arc::new(AtomicBool::new(false));
     let stop_thread = Arc::clone(&stop);
     let thread = thread::Builder::new()
         .name("llamp-feeder".into())
         .spawn(move || feed_loop(producer, stereo, stop_thread))
         .map_err(|err| err.to_string())?;
-    Ok(LoopPlayback { stop, thread: Some(thread), stream: Some(stream) })
+    Ok(LoopPlayback {
+        stop,
+        thread: Some(thread),
+        stream: Some(stream),
+    })
 }
 
 fn feed_loop(mut producer: rtrb::Producer<f32>, stereo: Vec<f32>, stop: Arc<AtomicBool>) {
@@ -65,6 +76,11 @@ fn feed_loop(mut producer: rtrb::Producer<f32>, stereo: Vec<f32>, stop: Arc<Atom
     let mut window = [0f32; PCM_WINDOW];
     let mut cursor = 0usize;
     let mut since_publish = 0usize;
+    let mut tap = FftTap::new();
+    let mut pair = [0f32; 2];
+    let mut pair_i = 0usize;
+    let mut pcm = [0f32; 1024];
+    let mut pcm_n = 0usize;
     while !stop.load(Ordering::Relaxed) {
         if producer.slots() < 2 {
             thread::sleep(Duration::from_millis(2));
@@ -78,6 +94,32 @@ fn feed_loop(mut producer: rtrb::Producer<f32>, stereo: Vec<f32>, stop: Arc<Atom
         offset += 1;
         if offset >= stereo.len() {
             offset = 0;
+        }
+        pair[pair_i] = sample;
+        pair_i += 1;
+        if pair_i == 2 {
+            if pcm_n + 2 <= pcm.len() {
+                pcm[pcm_n] = pair[0];
+                pcm[pcm_n + 1] = pair[1];
+                pcm_n += 2;
+            } else {
+                pcm.copy_within(2.., 0);
+                pcm[1022] = pair[0];
+                pcm[1023] = pair[1];
+            }
+            if let Some(spec) = tap.push(&pair) {
+                let (rms, peak) = analysis::stereo_meters(&pcm);
+                analysis::publish_hop(FrameHop {
+                    pcm,
+                    bins_db: spec.bins_db,
+                    rms_l: rms[0],
+                    rms_r: rms[1],
+                    peak_l: peak[0],
+                    peak_r: peak[1],
+                    onset: 0.0,
+                });
+            }
+            pair_i = 0;
         }
         if offset % 2 == 1 {
             window[cursor % PCM_WINDOW] = sample;
@@ -117,13 +159,19 @@ fn dispatch() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("decode") => {
-            let input = args.next().ok_or("usage: llamp decode <path> <out.wav> [--pcm16]")?;
-            let output = args.next().ok_or("usage: llamp decode <path> <out.wav> [--pcm16]")?;
+            let input = args
+                .next()
+                .ok_or("usage: llamp decode <path> <out.wav> [--pcm16]")?;
+            let output = args
+                .next()
+                .ok_or("usage: llamp decode <path> <out.wav> [--pcm16]")?;
             let pcm16 = args.any(|arg| arg == "--pcm16");
             decode_to_wav(Path::new(&input), Path::new(&output), pcm16)
         }
         Some("play") => {
-            let input = args.next().ok_or("usage: llamp play <path> [--eq-sweep | --eq-band N --eq-db D]")?;
+            let input = args
+                .next()
+                .ok_or("usage: llamp play <path> [--eq-sweep | --eq-band N --eq-db D]")?;
             let mut band = None;
             let mut db = 0.0f32;
             let mut sweep = false;
@@ -131,11 +179,15 @@ fn dispatch() -> Result<(), String> {
                 match flag.as_str() {
                     "--eq-sweep" => sweep = true,
                     "--eq-band" => {
-                        let raw = args.next().ok_or("usage: llamp play <path> [--eq-sweep | --eq-band N --eq-db D]")?;
+                        let raw = args.next().ok_or(
+                            "usage: llamp play <path> [--eq-sweep | --eq-band N --eq-db D]",
+                        )?;
                         band = Some(raw.parse::<usize>().map_err(|_| format!("band {raw}"))?);
                     }
                     "--eq-db" => {
-                        let raw = args.next().ok_or("usage: llamp play <path> [--eq-sweep | --eq-band N --eq-db D]")?;
+                        let raw = args.next().ok_or(
+                            "usage: llamp play <path> [--eq-sweep | --eq-band N --eq-db D]",
+                        )?;
                         db = raw.parse::<f32>().map_err(|_| format!("db {raw}"))?;
                     }
                     other => return Err(format!("unknown flag {other}")),
@@ -157,7 +209,8 @@ fn dispatch() -> Result<(), String> {
 pub fn decode_to_wav(input: &Path, output: &Path, pcm16: bool) -> Result<(), String> {
     let decoded = decode::decode_path(input).map_err(|err| err.to_string())?;
     let bits = if pcm16 { WavBits::Pcm16 } else { WavBits::F32 };
-    wav::write_wav(output, decoded.sample_rate, &decoded.frames, bits).map_err(|err| err.to_string())
+    wav::write_wav(output, decoded.sample_rate, &decoded.frames, bits)
+        .map_err(|err| err.to_string())
 }
 
 pub fn play(input: &Path) -> Result<(), String> {
@@ -172,8 +225,14 @@ fn play_path(input: &Path, sweep: bool) -> Result<(), String> {
     let stereo = resample_to_device(&decoded.frames, decoded.sample_rate, host_rate)?;
     let capacity = output::ring_capacity(host_rate, 2);
     let (mut producer, consumer) = RingBuffer::new(capacity);
-    let request = StreamRequest { device_id: None, sample_rate: host_rate, channels: 2 };
-    let mut stream = backend.open(request, consumer, events.clone()).map_err(|err| err.to_string())?;
+    let request = StreamRequest {
+        device_id: None,
+        sample_rate: host_rate,
+        channels: 2,
+    };
+    let mut stream = backend
+        .open(request, consumer, events.clone())
+        .map_err(|err| err.to_string())?;
     let mut offset = 0;
     let mut current_band = 10usize;
     let frames = stereo.len() / 2;
@@ -195,7 +254,11 @@ fn play_path(input: &Path, sweep: bool) -> Result<(), String> {
             producer = prod;
             stream = backend
                 .open(
-                    StreamRequest { device_id: None, sample_rate: new_rate, channels: 2 },
+                    StreamRequest {
+                        device_id: None,
+                        sample_rate: new_rate,
+                        channels: 2,
+                    },
                     cons,
                     events.clone(),
                 )
@@ -222,7 +285,9 @@ fn play_path(input: &Path, sweep: bool) -> Result<(), String> {
 fn open_rate() -> Result<u32, String> {
     let host = cpal::default_host();
     let device = host.default_output_device().ok_or("no default output")?;
-    let config = device.default_output_config().map_err(|err| err.to_string())?;
+    let config = device
+        .default_output_config()
+        .map_err(|err| err.to_string())?;
     Ok(config.sample_rate())
 }
 
@@ -242,8 +307,10 @@ fn resample_to_device(interleaved: &[f32], from: u32, to: u32) -> Result<Vec<f32
     while offset < frames {
         let n = in_chunk.min(frames - offset);
         input[..n * 2].copy_from_slice(&interleaved[offset * 2..offset * 2 + n * 2]);
-        let input_adapter = InterleavedSlice::new(interleaved, 2, frames).map_err(|err| err.to_string())?;
-        let mut output_adapter = InterleavedSlice::new_mut(&mut output, 2, out_max).map_err(|err| err.to_string())?;
+        let input_adapter =
+            InterleavedSlice::new(interleaved, 2, frames).map_err(|err| err.to_string())?;
+        let mut output_adapter =
+            InterleavedSlice::new_mut(&mut output, 2, out_max).map_err(|err| err.to_string())?;
         let mut indexing = Indexing::new().input_offset(offset);
         if n < in_chunk {
             indexing = indexing.partial_len(n);

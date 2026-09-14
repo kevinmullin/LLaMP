@@ -40,7 +40,11 @@ impl Limiter {
             for s in &self.delay[..self.filled * 2] {
                 peak = peak.max(s.abs());
             }
-            let needed = if peak > Self::CEILING { Self::CEILING / peak } else { 1.0 };
+            let needed = if peak > Self::CEILING {
+                Self::CEILING / peak
+            } else {
+                1.0
+            };
             if needed < self.gain {
                 self.gain = needed;
             } else {

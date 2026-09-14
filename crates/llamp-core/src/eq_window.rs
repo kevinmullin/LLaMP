@@ -47,7 +47,10 @@ pub struct Gains {
 
 impl Default for Gains {
     fn default() -> Self {
-        Self { preamp: 0, bands: [0; 10] }
+        Self {
+            preamp: 0,
+            bands: [0; 10],
+        }
     }
 }
 
@@ -163,7 +166,9 @@ impl EqWindow {
     pub fn current_gains(&self) -> Gains {
         Gains {
             preamp: (llamp_audio::preamp_target_db() * 1000.0).round() as i16,
-            bands: std::array::from_fn(|band| (llamp_audio::band_target_db(band) * 1000.0).round() as i16),
+            bands: std::array::from_fn(|band| {
+                (llamp_audio::band_target_db(band) * 1000.0).round() as i16
+            }),
         }
     }
 
@@ -212,7 +217,10 @@ impl EqWindow {
     }
 
     pub fn preset_names(&self) -> Vec<String> {
-        self.presets.iter().map(|preset| preset.name.clone()).collect()
+        self.presets
+            .iter()
+            .map(|preset| preset.name.clone())
+            .collect()
     }
 
     pub fn set_store(&mut self, path: &Path) -> Result<(), String> {
@@ -247,7 +255,8 @@ impl EqWindow {
     pub fn drag(&mut self, which: Which, dx: i32, dy: i32) -> DockMove {
         self.accum_x = self.accum_x.saturating_add(dx);
         self.accum_y = self.accum_y.saturating_add(dy);
-        let travel = self.accum_x.saturating_mul(self.accum_x) + self.accum_y.saturating_mul(self.accum_y);
+        let travel =
+            self.accum_x.saturating_mul(self.accum_x) + self.accum_y.saturating_mul(self.accum_y);
         if self.docked && travel > UNDOCK2 {
             self.docked = false;
             self.move_one(which, dx, dy);
@@ -305,7 +314,11 @@ impl EqWindow {
     }
 
     fn apply_track_preset(&mut self) {
-        if let Some(row) = self.autoloads.iter().find(|row| row.name == self.last_track) {
+        if let Some(row) = self
+            .autoloads
+            .iter()
+            .find(|row| row.name == self.last_track)
+        {
             self.apply(row.gains);
             return;
         }
@@ -419,7 +432,10 @@ fn parse_gains(rest: &str) -> Result<Gains, String> {
     }
     let mut bands = [0i16; 10];
     bands.copy_from_slice(&parts[1..]);
-    Ok(Gains { preamp: parts[0], bands })
+    Ok(Gains {
+        preamp: parts[0],
+        bands,
+    })
 }
 
 #[cfg(test)]
@@ -517,8 +533,14 @@ mod tests {
         let early = rms(&after[..256]);
         let late = rms(&after[after.len() - 2048..]);
         let step = before_rms * 10f32.powf(12.0 / 20.0);
-        assert!(early < before_rms + 0.5 * (step - before_rms), "preset load stepped: early {early} step {step}");
-        assert!(late > early * 1.5, "preset load did not slew: early {early} late {late}");
+        assert!(
+            early < before_rms + 0.5 * (step - before_rms),
+            "preset load stepped: early {early} step {step}"
+        );
+        assert!(
+            late > early * 1.5,
+            "preset load did not slew: early {early} late {late}"
+        );
     }
 
     #[test]

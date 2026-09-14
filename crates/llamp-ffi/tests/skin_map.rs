@@ -3,7 +3,10 @@ use std::ffi::CStr;
 #[test]
 fn every_control_has_a_non_empty_label_and_the_idle_blit_is_the_main_window() {
     let wsz = xtask::fixture_wsz();
-    assert_eq!(llamp_ffi::llamp_skin_load(wsz.as_ptr(), wsz.len()), llamp_ffi::LLAMP_OK);
+    assert_eq!(
+        llamp_ffi::llamp_skin_load(wsz.as_ptr(), wsz.len()),
+        llamp_ffi::LLAMP_OK
+    );
     let image = llamp_ffi::llamp_skin_blit_main();
     assert_eq!(image.width, 275);
     assert_eq!(image.height, 116);

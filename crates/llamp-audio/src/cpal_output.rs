@@ -18,7 +18,9 @@ pub struct CpalOutput {
 
 impl CpalOutput {
     pub fn new() -> Self {
-        Self { host: cpal::default_host() }
+        Self {
+            host: cpal::default_host(),
+        }
     }
 }
 
@@ -44,11 +46,21 @@ impl Playback for OpenStream {
 
 impl Output for CpalOutput {
     fn enumerate(&self) -> Result<Vec<DeviceInfo>, OutputError> {
-        let default = self.host.default_output_device().and_then(|d| d.description().ok()).map(|d| d.name().to_string());
-        let devices = self.host.output_devices().map_err(|err| OutputError(err.to_string()))?;
+        let default = self
+            .host
+            .default_output_device()
+            .and_then(|d| d.description().ok())
+            .map(|d| d.name().to_string());
+        let devices = self
+            .host
+            .output_devices()
+            .map_err(|err| OutputError(err.to_string()))?;
         let mut out = Vec::new();
         for device in devices {
-            let name = device.description().map(|d| d.name().to_string()).unwrap_or_else(|_| "unknown".into());
+            let name = device
+                .description()
+                .map(|d| d.name().to_string())
+                .unwrap_or_else(|_| "unknown".into());
             out.push(DeviceInfo {
                 id: name.clone(),
                 name: name.clone(),
@@ -69,11 +81,22 @@ impl Output for CpalOutput {
                 .host
                 .output_devices()
                 .map_err(|err| OutputError(err.to_string()))?
-                .find(|d| d.description().ok().map(|desc| desc.name().to_string()).as_deref() == Some(id))
+                .find(|d| {
+                    d.description()
+                        .ok()
+                        .map(|desc| desc.name().to_string())
+                        .as_deref()
+                        == Some(id)
+                })
                 .ok_or_else(|| OutputError(format!("no device {id}")))?,
-            None => self.host.default_output_device().ok_or_else(|| OutputError("no default output".into()))?,
+            None => self
+                .host
+                .default_output_device()
+                .ok_or_else(|| OutputError("no default output".into()))?,
         };
-        let supported = device.default_output_config().map_err(|err| OutputError(err.to_string()))?;
+        let supported = device
+            .default_output_config()
+            .map_err(|err| OutputError(err.to_string()))?;
         let format = supported.sample_format();
         let mut config: StreamConfig = supported.into();
         if request.sample_rate > 0 {
@@ -91,7 +114,9 @@ impl Output for CpalOutput {
                 device
                     .build_output_stream(
                         config,
-                        move |data: &mut [f32], _| fill_float(data, &mut ring, &events_cb, &mut stage, channels),
+                        move |data: &mut [f32], _| {
+                            fill_float(data, &mut ring, &events_cb, &mut stage, channels)
+                        },
                         move |err| note_error(&err_events, err.kind()),
                         None,
                     )
@@ -107,7 +132,15 @@ impl Output for CpalOutput {
                     .build_output_stream(
                         config,
                         move |data: &mut [i16], _| {
-                            fill_i16(data, &mut ring, &events_cb, &mut rng, &mut stage, &mut scratch, channels)
+                            fill_i16(
+                                data,
+                                &mut ring,
+                                &events_cb,
+                                &mut rng,
+                                &mut stage,
+                                &mut scratch,
+                                channels,
+                            )
                         },
                         move |err| note_error(&err_events, err.kind()),
                         None,
@@ -121,7 +154,13 @@ impl Output for CpalOutput {
     }
 }
 
-fn fill_float(data: &mut [f32], ring: &mut Consumer<f32>, events: &OutputEvents, stage: &mut Stage, channels: u16) {
+fn fill_float(
+    data: &mut [f32],
+    ring: &mut Consumer<f32>,
+    events: &OutputEvents,
+    stage: &mut Stage,
+    channels: u16,
+) {
     let mut missed = false;
     let mut consumed = 0u64;
     for sample in data.iter_mut() {
@@ -140,7 +179,9 @@ fn fill_float(data: &mut [f32], ring: &mut Consumer<f32>, events: &OutputEvents,
         stage.process(data);
     }
     if consumed > 0 {
-        events.played_frames.fetch_add(consumed / 2, Ordering::Relaxed);
+        events
+            .played_frames
+            .fetch_add(consumed / 2, Ordering::Relaxed);
     }
     if missed {
         events.underruns.fetch_add(1, Ordering::Relaxed);
@@ -186,7 +227,9 @@ fn fill_i16(
         offset += n;
     }
     if consumed > 0 {
-        events.played_frames.fetch_add(consumed / 2, Ordering::Relaxed);
+        events
+            .played_frames
+            .fetch_add(consumed / 2, Ordering::Relaxed);
     }
     if missed {
         events.underruns.fetch_add(1, Ordering::Relaxed);

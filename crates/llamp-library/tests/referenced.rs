@@ -12,6 +12,7 @@ fn one_thousand_rows_are_storage_referenced() {
         fs::write(files.join(format!("track-{i:04}")), b"").expect("file");
     }
     let lib = Library::open(&root.join("library.sqlite")).expect("open");
+    // Open applies 001 then 002. v1 is only a mid-migration fixture (migrate_v1.rs).
     assert_eq!(lib.user_version().expect("version"), 2);
     assert_eq!(lib.insert_referenced_dir(&files).expect("insert"), 1000);
     assert_eq!(lib.count_referenced().expect("count"), 1000);

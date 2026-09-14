@@ -112,11 +112,30 @@ typedef struct LlampGroup {
   struct LlampFrame eq;
   struct LlampFrame playlist;
   struct LlampFrame browser;
+  struct LlampFrame vis;
   uint8_t main_docked;
   uint8_t eq_docked;
   uint8_t playlist_docked;
   uint8_t browser_docked;
+  uint8_t vis_docked;
 } LlampGroup;
+
+typedef struct LlampVisPacket {
+  float pcm[1024];
+  float fft_linear[513];
+  float fft_bands[32];
+  uint32_t fft_bands_len;
+  float rms_l;
+  float rms_r;
+  float peak_l;
+  float peak_r;
+  float onset;
+  uint64_t position_frames;
+  uint64_t duration_frames;
+  uint8_t produces_pcm;
+  uint16_t title_len;
+  uint8_t title[256];
+} LlampVisPacket;
 
 /**
  * NUL-terminated crate version. The caller does not free this pointer.
@@ -222,7 +241,7 @@ void llamp_transport_set_slider(uint32_t id,
 
 /**
  * Retains every file in `refs_dir` and loops `track` through the output.
- * Oscilloscope stays the vis mode (0). Spectrum bars are not drawn.
+ * Oscilloscope stays the vis mode (0). Spectrum uses the analysis hop when the mode is 1.
  * The callback still only `fetch_add`s. Returns `LLAMP_OK` or `LLAMP_ERR_INVALID`.
  */
 int32_t llamp_budget_prepare(const char *track, const char *refs_dir);
@@ -395,5 +414,58 @@ void llamp_group_begin_drag(void);
 struct LlampGroup llamp_group_drag(uint32_t which, int32_t dx, int32_t dy);
 
 struct LlampGroup llamp_group_end_drag(void);
+
+void llamp_vis_surface_reset(void);
+
+/**
+ * Bind a shell-owned `CAMetalLayer`. Does not create a wgpu surface.
+ * The pointer is stored only until invalidate or a newer bind.
+ */
+int32_t llamp_vis_surface_bind(void *layer, uint64_t generation);
+
+/**
+ * Bind the shell-owned `NSView` for wgpu 30 (`RawHandle`, not a layer pointer).
+ * Drops any previous surface before storing the new view.
+ */
+int32_t llamp_vis_surface_bind_view(void *view, uint64_t generation);
+
+int32_t llamp_vis_surface_resize(uint32_t width, uint32_t height, uint64_t generation);
+
+/**
+ * Drops the wgpu surface before the slot forgets the pointers.
+ */
+int32_t llamp_vis_surface_invalidate(uint64_t generation);
+
+uint64_t llamp_vis_surface_generation(void);
+
+void llamp_vis_set_occluded(uint8_t occluded);
+
+uint64_t llamp_vis_gpu_submits(void);
+
+/**
+ * Present one frame. Occluded or hidden submits zero GPU work.
+ */
+int32_t llamp_vis_present(uint64_t generation);
+
+/**
+ * Pulls the latest hop. Log bands use the golden pane width and bar width.
+ */
+struct LlampVisPacket llamp_vis_packet(void);
+
+struct LlampImage llamp_vis_chrome_blit(uint32_t width, uint32_t height);
+
+struct LlampFrame llamp_vis_client_rect(int32_t width, int32_t height, uint8_t fullscreen);
+
+struct LlampSize llamp_vis_propose_size(int32_t width, int32_t height);
+
+struct LlampSize llamp_vis_min_size(void);
+
+uint32_t llamp_vis_preset_count(void);
+
+const char *llamp_vis_preset_name(uint32_t index);
+
+const char *llamp_wgpu_version(void);
+
+void llamp_session_set_kbps(uint16_t kbps);
 
 #endif  /* LLAMP_H */

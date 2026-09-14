@@ -5,7 +5,9 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock};
 
 /// Band centers in Hz. Q is `f / bandwidth`, bandwidth the geometric neighbor spacing.
-pub const BAND_HZ: [f32; 10] = [60.0, 170.0, 310.0, 600.0, 1000.0, 3000.0, 6000.0, 12000.0, 14000.0, 16000.0];
+pub const BAND_HZ: [f32; 10] = [
+    60.0, 170.0, 310.0, 600.0, 1000.0, 3000.0, 6000.0, 12000.0, 14000.0, 16000.0,
+];
 
 /// Locked in the phase 1 impulse test. Do not copy from another player.
 pub const BAND_Q: [f32; 10] = [
@@ -55,7 +57,8 @@ impl Targets {
     }
 
     fn set_preamp(&self, db: f32) {
-        self.preamp.store(db.clamp(-12.0, 12.0).to_bits(), Ordering::Relaxed);
+        self.preamp
+            .store(db.clamp(-12.0, 12.0).to_bits(), Ordering::Relaxed);
     }
 }
 
@@ -82,7 +85,10 @@ pub fn sweep_band_at(frame: usize, frames: usize) -> usize {
     if frames == 0 {
         return 0;
     }
-    frame.saturating_mul(10).min(frames.saturating_mul(10).saturating_sub(1)) / frames.max(1)
+    frame
+        .saturating_mul(10)
+        .min(frames.saturating_mul(10).saturating_sub(1))
+        / frames.max(1)
 }
 
 /// Window preamp drag. Same slew path as a band.
@@ -120,7 +126,8 @@ pub fn curve_db(sample_rate: u32, out: &mut [f32]) {
     }
     let targets = ui_targets();
     let preamp = f32::from_bits(targets.preamp.load(Ordering::Relaxed));
-    let bands = std::array::from_fn(|band| f32::from_bits(targets.bands[band].load(Ordering::Relaxed)));
+    let bands =
+        std::array::from_fn(|band| f32::from_bits(targets.bands[band].load(Ordering::Relaxed)));
     if targets.bypass.load(Ordering::Relaxed) {
         out.fill(0.0);
         return;
@@ -129,7 +136,9 @@ pub fn curve_db(sample_rate: u32, out: &mut [f32]) {
 }
 
 fn fill_curve(sample_rate: u32, preamp_db: f32, bands: &[f32; 10], out: &mut [f32]) {
-    let coeffs: [[f32; 5]; 10] = std::array::from_fn(|band| peaking(sample_rate as f32, BAND_HZ[band], BAND_Q[band], bands[band]));
+    let coeffs: [[f32; 5]; 10] = std::array::from_fn(|band| {
+        peaking(sample_rate as f32, BAND_HZ[band], BAND_Q[band], bands[band])
+    });
     let pre = 10f32.powf(preamp_db / 20.0);
     let lo = 20.0f32;
     let hi = (sample_rate as f32 / 2.0).min(20_000.0).max(lo * 1.01);
@@ -214,7 +223,12 @@ impl Eq {
                 let state = &mut self.bands[band];
                 state.applied_db += self.slew * (target - state.applied_db);
                 if (state.applied_db - state.coeff_db).abs() > REDESIGN_DB {
-                    state.coeff = peaking(self.rate as f32, BAND_HZ[band], BAND_Q[band], state.applied_db);
+                    state.coeff = peaking(
+                        self.rate as f32,
+                        BAND_HZ[band],
+                        BAND_Q[band],
+                        state.applied_db,
+                    );
                     state.coeff_db = state.applied_db;
                 }
                 l = biquad(l, &state.coeff, &mut state.z1[0], &mut state.z2[0]);

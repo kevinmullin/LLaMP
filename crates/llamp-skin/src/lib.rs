@@ -17,6 +17,7 @@ use std::process::ExitCode;
 use sha2::{Digest, Sha256};
 
 pub use blit::{scale_nearest, Display};
+pub use layout::VIS_BAR_W;
 pub use chrome::{blit_gen, blit_playlist};
 pub use bmp::decode_bmp;
 pub use config::{default_playlist_colors, default_vis_colors};

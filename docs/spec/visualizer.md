@@ -3,7 +3,7 @@
 Two surfaces. They do not share a renderer.
 
 1. The 76×16 pane in the main window. Oscilloscope and spectrum analyzer, cycled by clicking. CPU blit. `viscolor.txt`. Pixel-exact, cheap. This pane exists in classic skins and stays that way.
-2. A separate window, `gen` chrome, wgpu client, fullscreen without chrome. Plugin visualizers live here. See [ADR 009](../adr/009-visualizer-gpu.md) and [ADR 010](../adr/010-milkdrop.md). Phase 7 pins the wgpu version and writes that pin into this spec. Do not invent the embedding calls before that pin.
+2. A separate window, `gen` chrome, wgpu client, fullscreen without chrome. Plugin visualizers live here. See [ADR 009](../adr/009-visualizer-gpu.md) and [ADR 010](../adr/010-milkdrop.md). wgpu **30.0.1**. Embedding is `SurfaceTargetUnsafe::RawHandle` from the shell-owned `NSView`. The `CAMetalLayer` still crosses inward as `void*` for the generation table; wgpu 30 has no `CoreAnimationLayer` variant. See [wgpu-layer-lifetime](../investigations/wgpu-layer-lifetime.md).
 
 A Tier B session has no PCM. Both surfaces use the non-reactive state in [providers](providers.md). They do not invent a spectrum from metadata.
 
@@ -41,7 +41,7 @@ Packet fields (POD, copied for the call):
 | Field | Definition |
 | --- | --- |
 | PCM | Interleaved stereo `f32`, the last 1024 samples at the device rate, post-DSP. If fewer exist, the prefix is zero. |
-| FFT linear | 512 magnitude bins from the 1024-point Hann FFT (Nyquist omitted or included as the implementation’s single choice, fixed in a test). Linear in frequency. |
+| FFT linear | 513 magnitude bins from the 1024-point Hann FFT. Nyquist is included (`WINDOW/2 + 1`). That is the existing `FftTap` choice, fixed in `frame_packet.rs`. Linear in frequency. |
 | FFT bands | Log-spaced bands, count matching whatever the 76×16 golden image settled, plus the same peak-hold values. A plugin may ignore these and rebin the linear FFT. |
 | RMS, peak | Per channel, the hop that produced this FFT. |
 | Onset | 0–1 confidence. The detector is a spectral-flux threshold tuned in phase 7 against a fixture click track. Until that fixture exists, the field is present and may be 0. Do not ship a random “beat” to make presets bounce. |
@@ -62,7 +62,7 @@ Killing a visualizer does not unload the skin and does not stop playback.
 
 v1 format: a directory with `preset.json` and one or more `.wgsl` files.
 
-`preset.json` fields: `name`, `author`, `llamp_preset` (must be `1`). Shader entry points are fixed names chosen in phase 7 when the first preset is written (`vs_main`, `fs_main`) so we are not inventing a loader language here.
+`preset.json` fields: `name`, `author`, `llamp_preset` (must be `1`). Shader entry points are `vs_main` and `fs_main`.
 
 We ship two presets we wrote. They must move when the onset field is non-zero and stay coherent when it is zero. They must not require network or a file outside the preset directory.
 

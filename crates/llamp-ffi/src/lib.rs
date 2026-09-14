@@ -9,6 +9,9 @@ use llamp_plugin_api::{MediaSource, SourceItem};
 use llamp_plugin_host::Registry;
 use llamp_source_local::LocalSource;
 
+mod vis;
+pub use vis::*;
+
 const _: () = assert!(llamp_core::TITLE_CAP == 256);
 use llamp_skin::SkinSlot;
 
@@ -111,12 +114,12 @@ pub extern "C" fn llamp_counter_poll() -> u64 {
     COUNTER.load(Ordering::Acquire)
 }
 
-fn skin_slot() -> &'static Mutex<SkinSlot> {
+pub(crate) fn skin_slot() -> &'static Mutex<SkinSlot> {
     static SKIN: OnceLock<Mutex<SkinSlot>> = OnceLock::new();
     SKIN.get_or_init(|| Mutex::new(SkinSlot::new()))
 }
 
-fn session() -> &'static Session {
+pub(crate) fn session() -> &'static Session {
     static SESSION: OnceLock<Session> = OnceLock::new();
     SESSION.get_or_init(Session::new)
 }
@@ -222,6 +225,15 @@ pub extern "C" fn llamp_skin_blit_main() -> LlampImage {
 pub extern "C" fn llamp_skin_blit_display(marquee_skip: u32) -> LlampImage {
     let snap = session().poll();
     let pcm = llamp_audio::live::pcm_snapshot();
+    let hop = llamp_audio::analysis::hop_snapshot();
+    let pane = llamp_skin::control_rect(llamp_skin::Control::VisPane);
+    let mut bands = [0.0f32; 32];
+    let band_n = llamp_audio::analysis::log_bands(
+        &hop.bins_db,
+        pane.w,
+        llamp_skin::VIS_BAR_W,
+        &mut bands,
+    );
     let time = format_time(&snap);
     let title = String::from_utf8_lossy(&snap.title[..snap.title_len as usize]).into_owned();
     let slot = match skin_slot().lock() {
@@ -253,9 +265,13 @@ pub extern "C" fn llamp_skin_blit_display(marquee_skip: u32) -> LlampImage {
             balance_ppm: snap.balance_ppm,
             seek_ppm: seek_ppm(&snap),
             scope: scope_samples(&snap, &pcm),
-            kbps: 0,
-            khz: 0,
-            spectrum: None,
+            kbps: snap.kbps,
+            khz: (snap.sample_rate / 1000) as u16,
+            spectrum: if snap.vis_mode != 0 && snap.produces_pcm != 0 {
+                Some(&bands[..band_n])
+            } else {
+                None
+            },
         },
     );
     image_from(rgba, llamp_skin::MAIN_WIDTH, llamp_skin::MAIN_HEIGHT)
@@ -450,7 +466,7 @@ pub extern "C" fn llamp_transport_set_slider(id: u32, ppm: u16) {
 }
 
 /// Retains every file in `refs_dir` and loops `track` through the output.
-/// Oscilloscope stays the vis mode (0). Spectrum bars are not drawn.
+/// Oscilloscope stays the vis mode (0). Spectrum uses the analysis hop when the mode is 1.
 /// The callback still only `fetch_add`s. Returns `LLAMP_OK` or `LLAMP_ERR_INVALID`.
 #[no_mangle]
 pub extern "C" fn llamp_budget_prepare(track: *const c_char, refs_dir: *const c_char) -> i32 {
@@ -484,7 +500,7 @@ fn cstr_path(ptr: *const c_char) -> Option<String> {
     )
 }
 
-fn image_from(rgba: Vec<u8>, width: u32, height: u32) -> LlampImage {
+pub(crate) fn image_from(rgba: Vec<u8>, width: u32, height: u32) -> LlampImage {
     let len = rgba.len();
     let data = Box::into_raw(rgba.into_boxed_slice()) as *mut u8;
     LlampImage {
@@ -1166,10 +1182,12 @@ pub struct LlampGroup {
     pub eq: LlampFrame,
     pub playlist: LlampFrame,
     pub browser: LlampFrame,
+    pub vis: LlampFrame,
     pub main_docked: u8,
     pub eq_docked: u8,
     pub playlist_docked: u8,
     pub browser_docked: u8,
+    pub vis_docked: u8,
 }
 
 /// Minimum playlist size. Resize is 25×29 from this. A mid-step size is rejected.
@@ -1468,6 +1486,7 @@ fn pane_from(which: u32) -> Option<llamp_core::Pane> {
         1 => Some(llamp_core::Pane::Eq),
         2 => Some(llamp_core::Pane::Playlist),
         3 => Some(llamp_core::Pane::Browser),
+        4 => Some(llamp_core::Pane::Vis),
         _ => None,
     }
 }
@@ -1487,10 +1506,12 @@ fn group_from(moved: llamp_core::GroupMove) -> LlampGroup {
         eq: frame(llamp_core::Pane::Eq),
         playlist: frame(llamp_core::Pane::Playlist),
         browser: frame(llamp_core::Pane::Browser),
+        vis: frame(llamp_core::Pane::Vis),
         main_docked: u8::from(moved.docked(llamp_core::Pane::Main)),
         eq_docked: u8::from(moved.docked(llamp_core::Pane::Eq)),
         playlist_docked: u8::from(moved.docked(llamp_core::Pane::Playlist)),
         browser_docked: u8::from(moved.docked(llamp_core::Pane::Browser)),
+        vis_docked: u8::from(moved.docked(llamp_core::Pane::Vis)),
     }
 }
 
@@ -1506,10 +1527,12 @@ fn empty_group() -> LlampGroup {
         eq: zero(),
         playlist: zero(),
         browser: zero(),
+        vis: zero(),
         main_docked: 0,
         eq_docked: 0,
         playlist_docked: 0,
         browser_docked: 0,
+        vis_docked: 0,
     }
 }
 

@@ -56,10 +56,16 @@ impl ReplayGainSource for LoftySource {
         let album = tag.get_string(ItemKey::ReplayGainAlbumGain).map(parse_db);
         Ok(GainTags {
             track_gain_db: track.flatten(),
-            track_peak: tag.get_string(ItemKey::ReplayGainTrackPeak).and_then(parse_peak),
+            track_peak: tag
+                .get_string(ItemKey::ReplayGainTrackPeak)
+                .and_then(parse_peak),
             album_gain_db: album.flatten(),
-            album_peak: tag.get_string(ItemKey::ReplayGainAlbumPeak).and_then(parse_peak),
-            album_id: tag.get_string(ItemKey::MusicBrainzReleaseId).map(str::to_string),
+            album_peak: tag
+                .get_string(ItemKey::ReplayGainAlbumPeak)
+                .and_then(parse_peak),
+            album_id: tag
+                .get_string(ItemKey::MusicBrainzReleaseId)
+                .map(str::to_string),
             v2: track.is_some() || album.is_some(),
             v1_gain_db: None,
         })
@@ -67,9 +73,18 @@ impl ReplayGainSource for LoftySource {
 }
 
 pub fn select_gain(current: &GainTags, next: Option<&GainTags>, rg_preamp_db: f32) -> AppliedGain {
-    let track_db = current.v2.then_some(current.track_gain_db).flatten().or(current.v1_gain_db).or(current.track_gain_db);
+    let track_db = current
+        .v2
+        .then_some(current.track_gain_db)
+        .flatten()
+        .or(current.v1_gain_db)
+        .or(current.track_gain_db);
     let album_ok = match (current.album_id.as_deref(), next) {
-        (Some(id), Some(next)) => next.album_id.as_deref() == Some(id) && current.album_gain_db.is_some() && next.album_gain_db.is_some(),
+        (Some(id), Some(next)) => {
+            next.album_id.as_deref() == Some(id)
+                && current.album_gain_db.is_some()
+                && next.album_gain_db.is_some()
+        }
         _ => false,
     };
     let (db, peak, used_album, used) = if album_ok {
@@ -88,7 +103,11 @@ pub fn select_gain(current: &GainTags, next: Option<&GainTags>, rg_preamp_db: f3
             applied = 20.0 * max_linear.log10();
         }
     }
-    AppliedGain { db: applied, used_replaygain: used, used_album }
+    AppliedGain {
+        db: applied,
+        used_replaygain: used,
+        used_album,
+    }
 }
 
 fn parse_db(text: &str) -> Option<f32> {

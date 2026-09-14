@@ -26,7 +26,10 @@ fn main() {
 }
 
 fn run_switch(setter: &std::path::Path, original: &str) {
-    let restore = Restore { setter: setter.to_path_buf(), name: original.to_string() };
+    let restore = Restore {
+        setter: setter.to_path_buf(),
+        name: original.to_string(),
+    };
 
     let devices = CpalOutput::new().enumerate().expect("enumerate");
     println!("enumerated_devices={}", devices.len());
@@ -40,10 +43,15 @@ fn run_switch(setter: &std::path::Path, original: &str) {
     let events = OutputEvents::new();
     let host_rate = open_rate();
     let mut backend = CpalOutput::new();
-    let (_producer, consumer) = RingBuffer::<f32>::new(llamp_audio::output::ring_capacity(host_rate, 2));
+    let (_producer, consumer) =
+        RingBuffer::<f32>::new(llamp_audio::output::ring_capacity(host_rate, 2));
     let mut stream = backend
         .open(
-            StreamRequest { device_id: None, sample_rate: host_rate, channels: 2 },
+            StreamRequest {
+                device_id: None,
+                sample_rate: host_rate,
+                channels: 2,
+            },
             consumer,
             events.clone(),
         )
@@ -70,13 +78,20 @@ fn run_switch(setter: &std::path::Path, original: &str) {
         return;
     }
     if new_rate != host_rate {
-        events.underruns.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        events
+            .underruns
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
     let underruns_at_reopen = events.underruns.load(std::sync::atomic::Ordering::Relaxed);
-    let (_producer, consumer) = RingBuffer::<f32>::new(llamp_audio::output::ring_capacity(new_rate, 2));
+    let (_producer, consumer) =
+        RingBuffer::<f32>::new(llamp_audio::output::ring_capacity(new_rate, 2));
     let mut stream = backend
         .open(
-            StreamRequest { device_id: None, sample_rate: new_rate, channels: 2 },
+            StreamRequest {
+                device_id: None,
+                sample_rate: new_rate,
+                channels: 2,
+            },
             consumer,
             events.clone(),
         )
@@ -109,12 +124,19 @@ fn run_switch(setter: &std::path::Path, original: &str) {
         return;
     }
     if restored_rate != new_rate {
-        events.underruns.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        events
+            .underruns
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
-    let (_producer, consumer) = RingBuffer::<f32>::new(llamp_audio::output::ring_capacity(restored_rate, 2));
+    let (_producer, consumer) =
+        RingBuffer::<f32>::new(llamp_audio::output::ring_capacity(restored_rate, 2));
     let mut stream = backend
         .open(
-            StreamRequest { device_id: None, sample_rate: restored_rate, channels: 2 },
+            StreamRequest {
+                device_id: None,
+                sample_rate: restored_rate,
+                channels: 2,
+            },
             consumer,
             events.clone(),
         )
