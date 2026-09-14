@@ -60,7 +60,50 @@ Color key is the top-left pixel of every sheet except `main.bmp`. It is `#FF00FF
 | `playpaus.bmp` | 30×10 | yes | Play (1,1), pause (11,1), stop (21,1), each 9×9. Idle draws stop. |
 | `numbers.bmp` | 118×14 | yes | 13 cells of 9×13 at x=1+i·9, y=1. Order: `0-9`, `:`, `-`, blank. Cell background `#101010`. |
 | `text.bmp` | 80×42 | yes | 5×7 cells, 16 per row, index 0 = U+0020. Ink `#F0F0F0`. Missing scalar means platform text. |
+| `eqmain.bmp` | 275×116 | yes | Title (0,0) 275×14 `#3A3060`. On (6,1) 20×11. Auto (30,1) 20×11. Presets (54,1) 44×11. Graph (10,18) 255×34 `#202050`. Sliders (10+i·24, 56) 10×48. Shade (254,3) 9×9. Close (264,3) 9×9. Pixel (0,0) stays the key. |
+| `eq_ex.bmp` | 275×16 | yes | On pressed (6,1) 20×11. Auto pressed (30,1) 20×11. Graph cap (1,1) 255×2. |
+| `pledit.bmp` | 275×145 | yes | Title (0,0) 275×14 `#8A6030`. Left (0,14) 8×88. Right (267,14) 8×88. Client (8,14) 259×88. Bottom (0,102) 275×14. Buttons 55×12 at x=0+i·55, y=103. H tile (25,116) 25×14. V tile (0,116) 8×29. |
+| `gen.bmp` | 275×116 | yes | Title (0,0) 275×14 `#305888`. Left (0,14) 8×94. Right (267,14) 8×94. Bottom (8,108) 259×8. Client (8,14) 259×94. |
+| `genex.bmp` | 80×28 | yes | Close (2,2), shade (22,2), fullscreen (42,2), preset (62,2), each 18×12. Pressed close (2,16). |
 
 Titlebar button slots, both rows (pressed y is 17): clutter 8×8 at x=10, 20, 30, 40, 50; minimize, shade, close 9×9 at x=244, 254, 264. The idle blit draws the titlebar strip, not the button sprites on top of it. The sprites exist so a later press state can swap them.
 
-EQ, playlist, and gen sheet origins are not in this table. They are not guessed.
+## EQ
+
+| Control | x | y | w | h |
+| --- | --- | --- | --- | --- |
+| Title | 0 | 0 | 275 | 14 |
+| On | 6 | 1 | 20 | 11 |
+| Auto | 30 | 1 | 20 | 11 |
+| Presets | 54 | 1 | 44 | 11 |
+| Shade | 254 | 3 | 9 | 9 |
+| Close | 264 | 3 | 9 | 9 |
+| Graph | 10 | 18 | 255 | 34 |
+| Sliders | 10+i·24 | 56 | 10 | 48 |
+
+Slider x is not `[21, 78, 96, 114, 132, 150, 168, 186, 204, 222, 240]`.
+
+## Playlist (minimum 275×116)
+
+| Control | x | y | w | h |
+| --- | --- | --- | --- | --- |
+| Title | 0 | 0 | 275 | 14 |
+| Left | 0 | 14 | 8 | 88 |
+| Right | 267 | 14 | 8 | 88 |
+| Client | 8 | 14 | 259 | 88 |
+| Bottom | 0 | 102 | 275 | 14 |
+| Add / Rem / Sel / Misc / List | 0+i·55 | 103 | 55 | 12 |
+
+## Gen (minimum 275×116)
+
+| Control | x | y | w | h |
+| --- | --- | --- | --- | --- |
+| Title | 0 | 0 | 275 | 14 |
+| Left | 0 | 14 | 8 | 94 |
+| Right | 267 | 14 | 8 | 94 |
+| Bottom | 8 | 108 | 259 | 8 |
+| Client | 8 | 14 | 259 | 94 |
+
+## Display extras
+
+kbps digits stamp at (111, 43), three 9×13 cells. kHz digits stamp at (156, 43), two 9×13 cells. Idle main blit does not stamp them. Spectrum bars use the vis pane (24, 52, 76×16). Bar width is 4. Bar count is `76 / 4`, not a hard-coded 19.

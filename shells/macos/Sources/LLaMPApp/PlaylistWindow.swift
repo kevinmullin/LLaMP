@@ -57,6 +57,7 @@ public final class PlaylistListView: NSView {
     public override func draw(_ dirtyRect: NSRect) {
         PleditText.color(llamp_text_bg()).setFill()
         bounds.fill()
+        drawChrome(llamp_playlist_blit())
         let count = llamp_playlist_visible_count(UInt32(entries.count), scroll)
         rowsConsidered = Int(count)
         let fg = PleditText.color(llamp_text_color())
@@ -69,7 +70,7 @@ public final class PlaylistListView: NSView {
         for slot in 0..<Int(count) {
             let index = Int(scroll) + slot
             guard index < entries.count else { break }
-            let row = NSRect(x: 0, y: CGFloat(slot * 7), width: bounds.width, height: 7)
+            let row = NSRect(x: 8, y: CGFloat(14 + slot * 7), width: bounds.width - 16, height: 7)
             if listCoreText {
                 PleditText.draw(entries[index], in: row, scale: max(textScale, 1), color: fg, background: bg)
             } else {
@@ -118,6 +119,12 @@ public final class PlaylistListView: NSView {
         rows.contains { row in
             row.withCString { llamp_playlist_row_font($0) == 1 }
         }
+    }
+
+    private func drawChrome(_ image: LlampImage) {
+        defer { llamp_image_free(image.data, image.len) }
+        guard let data = image.data, image.width > 0 else { return }
+        drawAtlas(data, width: Int(image.width), height: Int(image.height), in: bounds)
     }
 
     private func drawBitmapRow(_ text: String, in rect: NSRect) {
@@ -176,7 +183,7 @@ public final class PlaylistListView: NSView {
             let index = Int(scroll) + slot
             element.setAccessibilityLabel(index < entries.count ? entries[index] : "")
             element.setAccessibilityParent(self)
-            element.setAccessibilityFrameInParentSpace(NSRect(x: 0, y: CGFloat(slot * 7), width: bounds.width, height: 7))
+            element.setAccessibilityFrameInParentSpace(NSRect(x: 8, y: CGFloat(14 + slot * 7), width: bounds.width - 16, height: 7))
             return element
         }
     }

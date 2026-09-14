@@ -15,6 +15,11 @@ pub enum Sheet {
     Playpaus,
     Numbers,
     Text,
+    Eqmain,
+    EqEx,
+    Pledit,
+    Gen,
+    Genex,
 }
 
 impl Sheet {
@@ -31,6 +36,11 @@ impl Sheet {
             Self::Playpaus => "playpaus",
             Self::Numbers => "numbers",
             Self::Text => "text",
+            Self::Eqmain => "eqmain",
+            Self::EqEx => "eq_ex",
+            Self::Pledit => "pledit",
+            Self::Gen => "gen",
+            Self::Genex => "genex",
         }
     }
 
@@ -52,6 +62,11 @@ impl Sheet {
             Self::Playpaus => (30, 10),
             Self::Numbers => (118, 14),
             Self::Text => (80, 42),
+            Self::Eqmain => (275, 116),
+            Self::EqEx => (275, 16),
+            Self::Pledit => (275, 145),
+            Self::Gen => (275, 116),
+            Self::Genex => (80, 28),
         }
     }
 }
@@ -63,7 +78,7 @@ pub struct Slice {
     pub blit: Option<Rect>,
 }
 
-const fn r(x: u32, y: u32, w: u32, h: u32) -> Rect {
+pub const fn r(x: u32, y: u32, w: u32, h: u32) -> Rect {
     Rect { x, y, w, h }
 }
 
@@ -145,11 +160,53 @@ pub fn control_rect(control: Control) -> Rect {
 
 pub const DIGIT_ORIGIN: (u32, u32) = (72, 22);
 pub const MARQUEE_ORIGIN: (u32, u32) = (8, 42);
+pub const KBPS_ORIGIN: (u32, u32) = (111, 43);
+pub const KHZ_ORIGIN: (u32, u32) = (156, 43);
 pub const MARQUEE_TEXT: &str = "FIXTURE";
 pub const TIME_TEXT: &str = "0:00";
 pub const GLYPH_CELL: (u32, u32) = (5, 7);
 pub const GLYPH_COLUMNS: u32 = 16;
 pub const ATLAS_STRIDE: u32 = 512;
+/// Fixture-locked spectrum bar width. Pane 76 / 4. Do not invent a bar count first.
+pub const VIS_BAR_W: u32 = 4;
+
+pub const EQ_GRAPH: Rect = r(10, 18, 255, 34);
+pub const EQ_SLIDER_Y: u32 = 56;
+pub const EQ_SLIDER_W: u32 = 10;
+pub const EQ_SLIDER_H: u32 = 48;
+pub const EQ_THUMB_H: u32 = 8;
+pub const EQ_SLIDER_STEP: u32 = 24;
+pub const EQ_SLIDER_ORIGIN_X: u32 = 10;
+pub const EQ_SLIDERS: u32 = 11;
+
+pub fn eq_slider_x(index: u32) -> u32 {
+    EQ_SLIDER_ORIGIN_X + index * EQ_SLIDER_STEP
+}
+
+pub fn eq_slider_rect(index: u32) -> Rect {
+    r(eq_slider_x(index), EQ_SLIDER_Y, EQ_SLIDER_W, EQ_SLIDER_H)
+}
+
+pub fn all_sheets() -> [Sheet; 16] {
+    [
+        Sheet::Main,
+        Sheet::Titlebar,
+        Sheet::Cbuttons,
+        Sheet::Shufrep,
+        Sheet::Posbar,
+        Sheet::Volume,
+        Sheet::Balance,
+        Sheet::Monoster,
+        Sheet::Playpaus,
+        Sheet::Numbers,
+        Sheet::Text,
+        Sheet::Eqmain,
+        Sheet::EqEx,
+        Sheet::Pledit,
+        Sheet::Gen,
+        Sheet::Genex,
+    ]
+}
 
 const CONTROLS: [Control; 27] = [
     Control::Titlebar,
@@ -181,7 +238,7 @@ const CONTROLS: [Control; 27] = [
     Control::VisPane,
 ];
 
-static SLICES: [Slice; 63] = [
+static SLICES: [Slice; 95] = [
     Slice {
         sprite: Sprite::Main,
         sheet: Sheet::Main,
@@ -560,6 +617,38 @@ static SLICES: [Slice; 63] = [
         src: r(109, 1, 9, 13),
         blit: None,
     },
+    Slice { sprite: Sprite::EqTitle, sheet: Sheet::Eqmain, src: r(0, 0, 275, 14), blit: None },
+    Slice { sprite: Sprite::EqWinOn, sheet: Sheet::Eqmain, src: r(6, 1, 20, 11), blit: None },
+    Slice { sprite: Sprite::EqAuto, sheet: Sheet::Eqmain, src: r(30, 1, 20, 11), blit: None },
+    Slice { sprite: Sprite::EqPresets, sheet: Sheet::Eqmain, src: r(54, 1, 44, 11), blit: None },
+    Slice { sprite: Sprite::EqGraph, sheet: Sheet::Eqmain, src: r(10, 18, 255, 34), blit: None },
+    Slice { sprite: Sprite::EqSlider, sheet: Sheet::Eqmain, src: r(10, 56, 250, 48), blit: None },
+    Slice { sprite: Sprite::EqThumb, sheet: Sheet::Eqmain, src: r(10, 56, 10, 8), blit: None },
+    Slice { sprite: Sprite::EqShade, sheet: Sheet::Eqmain, src: r(254, 3, 9, 9), blit: None },
+    Slice { sprite: Sprite::EqClose, sheet: Sheet::Eqmain, src: r(264, 3, 9, 9), blit: None },
+    Slice { sprite: Sprite::EqWinOnPressed, sheet: Sheet::EqEx, src: r(6, 1, 20, 11), blit: None },
+    Slice { sprite: Sprite::EqAutoPressed, sheet: Sheet::EqEx, src: r(30, 1, 20, 11), blit: None },
+    Slice { sprite: Sprite::PleditTitle, sheet: Sheet::Pledit, src: r(0, 0, 275, 14), blit: None },
+    Slice { sprite: Sprite::PleditLeft, sheet: Sheet::Pledit, src: r(0, 14, 8, 88), blit: None },
+    Slice { sprite: Sprite::PleditRight, sheet: Sheet::Pledit, src: r(267, 14, 8, 88), blit: None },
+    Slice { sprite: Sprite::PleditBottom, sheet: Sheet::Pledit, src: r(0, 102, 275, 14), blit: None },
+    Slice { sprite: Sprite::PleditClient, sheet: Sheet::Pledit, src: r(8, 14, 259, 88), blit: None },
+    Slice { sprite: Sprite::PleditAdd, sheet: Sheet::Pledit, src: r(0, 103, 55, 12), blit: None },
+    Slice { sprite: Sprite::PleditRem, sheet: Sheet::Pledit, src: r(55, 103, 55, 12), blit: None },
+    Slice { sprite: Sprite::PleditSel, sheet: Sheet::Pledit, src: r(110, 103, 55, 12), blit: None },
+    Slice { sprite: Sprite::PleditMisc, sheet: Sheet::Pledit, src: r(165, 103, 55, 12), blit: None },
+    Slice { sprite: Sprite::PleditList, sheet: Sheet::Pledit, src: r(220, 103, 55, 12), blit: None },
+    Slice { sprite: Sprite::PleditTileH, sheet: Sheet::Pledit, src: r(25, 116, 25, 14), blit: None },
+    Slice { sprite: Sprite::PleditTileV, sheet: Sheet::Pledit, src: r(0, 116, 8, 29), blit: None },
+    Slice { sprite: Sprite::GenTitle, sheet: Sheet::Gen, src: r(0, 0, 275, 14), blit: None },
+    Slice { sprite: Sprite::GenLeft, sheet: Sheet::Gen, src: r(0, 14, 8, 94), blit: None },
+    Slice { sprite: Sprite::GenRight, sheet: Sheet::Gen, src: r(267, 14, 8, 94), blit: None },
+    Slice { sprite: Sprite::GenBottom, sheet: Sheet::Gen, src: r(8, 108, 259, 8), blit: None },
+    Slice { sprite: Sprite::GenClient, sheet: Sheet::Gen, src: r(8, 14, 259, 94), blit: None },
+    Slice { sprite: Sprite::GenexClose, sheet: Sheet::Genex, src: r(2, 2, 18, 12), blit: None },
+    Slice { sprite: Sprite::GenexShade, sheet: Sheet::Genex, src: r(22, 2, 18, 12), blit: None },
+    Slice { sprite: Sprite::GenexFullscreen, sheet: Sheet::Genex, src: r(42, 2, 18, 12), blit: None },
+    Slice { sprite: Sprite::GenexPreset, sheet: Sheet::Genex, src: r(62, 2, 18, 12), blit: None },
 ];
 
 pub fn digit_sprite(ch: char) -> Option<Sprite> {

@@ -3,6 +3,7 @@
 mod atlas;
 mod blit;
 mod bmp;
+mod chrome;
 mod config;
 mod eq_blit;
 mod layout;
@@ -16,9 +17,10 @@ use std::process::ExitCode;
 use sha2::{Digest, Sha256};
 
 pub use blit::{scale_nearest, Display};
+pub use chrome::{blit_gen, blit_playlist};
 pub use bmp::decode_bmp;
 pub use config::{default_playlist_colors, default_vis_colors};
-pub use eq_blit::{blit_eq, eq_controls, EqControl, EqPaint, APPLYING_CAPTION, AUTO_LABEL, DISABLED_CAPTION, EQ_HEIGHT, EQ_WIDTH};
+pub use eq_blit::{blit_eq, blit_eq_skin, eq_controls, EqControl, EqPaint, APPLYING_CAPTION, AUTO_LABEL, DISABLED_CAPTION, EQ_HEIGHT, EQ_WIDTH};
 
 pub const MAIN_WIDTH: u32 = 275;
 pub const MAIN_HEIGHT: u32 = 116;
@@ -117,6 +119,38 @@ pub enum Sprite {
     EqOn,
     PlaylistOff,
     PlaylistOn,
+    EqTitle,
+    EqWinOn,
+    EqWinOnPressed,
+    EqAuto,
+    EqAutoPressed,
+    EqPresets,
+    EqGraph,
+    EqSlider,
+    EqThumb,
+    EqShade,
+    EqClose,
+    PleditTitle,
+    PleditLeft,
+    PleditRight,
+    PleditBottom,
+    PleditClient,
+    PleditAdd,
+    PleditRem,
+    PleditSel,
+    PleditMisc,
+    PleditList,
+    PleditTileH,
+    PleditTileV,
+    GenTitle,
+    GenLeft,
+    GenRight,
+    GenBottom,
+    GenClient,
+    GenexClose,
+    GenexShade,
+    GenexFullscreen,
+    GenexPreset,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -377,19 +411,7 @@ fn assemble(
         }
     }
     let mut images: Vec<(layout::Sheet, Option<DecodedBmp>)> = Vec::new();
-    for sheet in [
-        layout::Sheet::Main,
-        layout::Sheet::Titlebar,
-        layout::Sheet::Cbuttons,
-        layout::Sheet::Shufrep,
-        layout::Sheet::Posbar,
-        layout::Sheet::Volume,
-        layout::Sheet::Balance,
-        layout::Sheet::Monoster,
-        layout::Sheet::Playpaus,
-        layout::Sheet::Numbers,
-        layout::Sheet::Text,
-    ] {
+    for sheet in layout::all_sheets() {
         images.push((sheet, decode_sheet(sheet, &chosen, &mut defects)?));
     }
     let main = images

@@ -24,7 +24,7 @@ final class PlaylistWindowTests: XCTestCase {
         let window = PlaylistWindow()
         window.list.entries = (0..<10_000).map { "row-\($0)" }
         window.list.scroll = 40
-        XCTAssertEqual(window.list.hitRow(y: 7), 41)
+        XCTAssertEqual(window.list.hitRow(y: 21), 41)
         XCTAssertEqual(window.list.rowsConsidered, 1)
         _ = BitmapCapture.render(window.list, pixelsWide: 275, pixelsHigh: 116)
         XCTAssertLessThan(window.list.rowsConsidered, 100)
@@ -52,7 +52,7 @@ final class PlaylistWindowTests: XCTestCase {
         bitmapOnly.list.entries = ["FIXTURE"]
         bitmapOnly.list.textScale = 4
         let bitmapCapture = BitmapCapture.render(bitmapOnly.list, pixelsWide: 1100, pixelsHigh: 464)
-        let bitmapF = cell(bitmapCapture.rgba, width: 1100, scale: 4, row: 0, col: 0)
+        let bitmapF = cell(bitmapCapture.rgba, width: 1100, scale: 4, row: 2, col: 0, originX: 8)
 
         let window = PlaylistWindow()
         window.list.entries = ["FIXTURE", "F日"]
@@ -62,8 +62,8 @@ final class PlaylistWindowTests: XCTestCase {
         let png = capture.image.representation(using: .png, properties: [:])
         try XCTUnwrap(png).write(to: url)
 
-        let promoted = cell(capture.rgba, width: 1100, scale: 4, row: 0, col: 0)
-        let cjk = cell(capture.rgba, width: 1100, scale: 4, row: 1, col: 0)
+        let promoted = cell(capture.rgba, width: 1100, scale: 4, row: 2, col: 0, originX: 8)
+        let cjk = cell(capture.rgba, width: 1100, scale: 4, row: 3, col: 0, originX: 8)
         XCTAssertNotEqual(promoted, bitmapF, "a visible missing glyph must not leave a bitmap row")
         XCTAssertFalse(flat(cjk, rgb(llamp_text_bg())), "CoreText must not be a blank box")
         XCTAssertNotEqual(cjk, bitmapF)

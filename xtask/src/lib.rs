@@ -50,6 +50,11 @@ fn sheets() -> Vec<(&'static str, Image)> {
         ("playpaus", paint_playpaus()),
         ("numbers", paint_numbers()),
         ("text", paint_text()),
+        ("eqmain", paint_eqmain()),
+        ("eq_ex", paint_eq_ex()),
+        ("pledit", paint_pledit()),
+        ("gen", paint_gen()),
+        ("genex", paint_genex()),
     ]
 }
 
@@ -205,6 +210,89 @@ fn box_digit(img: &mut Image, x: u32, y: u32) {
     img.rect(x + 1, y + 11, 7, 1, [0xF8, 0xF8, 0xF8]);
     img.rect(x + 1, y + 1, 1, 11, [0xF8, 0xF8, 0xF8]);
     img.rect(x + 7, y + 1, 1, 11, [0xF8, 0xF8, 0xF8]);
+}
+
+fn paint_eqmain() -> Image {
+    let mut img = Image::fill(275, 116, KEY);
+    img.rect(0, 0, 275, 14, [0x3A, 0x30, 0x60]);
+    img.set(0, 0, KEY);
+    img.rect(6, 1, 20, 11, [0x28, 0xC0, 0x60]);
+    img.rect(30, 1, 20, 11, [0xC0, 0xC0, 0x28]);
+    img.rect(54, 1, 44, 11, [0x28, 0x78, 0xC0]);
+    img.rect(254, 3, 9, 9, [0xC0, 0xC0, 0xC0]);
+    img.rect(264, 3, 9, 9, [0xFF, 0x40, 0x40]);
+    img.rect(10, 18, 255, 34, [0x20, 0x20, 0x50]);
+    let hues = [
+        [0xE0, 0x40, 0x40],
+        [0xE0, 0x80, 0x40],
+        [0xE0, 0xC0, 0x40],
+        [0xA0, 0xE0, 0x40],
+        [0x40, 0xE0, 0x40],
+        [0x40, 0xE0, 0xA0],
+        [0x40, 0xC0, 0xE0],
+        [0x40, 0x60, 0xE0],
+        [0x80, 0x40, 0xE0],
+        [0xC0, 0x40, 0xE0],
+        [0xE0, 0x40, 0xA0],
+    ];
+    for (i, color) in hues.into_iter().enumerate() {
+        let x = 10 + i as u32 * 24;
+        img.rect(x, 56, 10, 48, color);
+        img.rect(x, 56, 10, 8, lighten(color));
+    }
+    img
+}
+
+fn paint_eq_ex() -> Image {
+    let mut img = Image::fill(275, 16, KEY);
+    img.rect(6, 1, 20, 11, [0x18, 0x80, 0x40]);
+    img.rect(30, 1, 20, 11, [0x80, 0x80, 0x18]);
+    img.rect(1, 1, 255, 2, [0x50, 0x50, 0x90]);
+    img
+}
+
+fn paint_pledit() -> Image {
+    let mut img = Image::fill(275, 145, KEY);
+    img.rect(0, 0, 275, 14, [0x8A, 0x60, 0x30]);
+    img.set(0, 0, KEY);
+    img.rect(0, 14, 8, 88, [0x6A, 0x48, 0x28]);
+    img.rect(267, 14, 8, 88, [0x6A, 0x48, 0x28]);
+    img.rect(8, 14, 259, 88, [0x00, 0x00, 0x00]);
+    img.rect(0, 102, 275, 14, [0x8A, 0x60, 0x30]);
+    let buttons = [
+        [0xC0, 0x40, 0x40],
+        [0xC0, 0x80, 0x40],
+        [0xC0, 0xC0, 0x40],
+        [0x40, 0xC0, 0x40],
+        [0x40, 0x80, 0xC0],
+    ];
+    for (i, color) in buttons.into_iter().enumerate() {
+        img.rect(i as u32 * 55, 103, 55, 12, color);
+    }
+    img.rect(25, 116, 25, 14, [0x9A, 0x70, 0x40]);
+    img.rect(0, 116, 8, 29, [0x7A, 0x50, 0x30]);
+    img
+}
+
+fn paint_gen() -> Image {
+    let mut img = Image::fill(275, 116, KEY);
+    img.rect(0, 0, 275, 14, [0x30, 0x58, 0x88]);
+    img.set(0, 0, KEY);
+    img.rect(0, 14, 8, 94, [0x20, 0x40, 0x68]);
+    img.rect(267, 14, 8, 94, [0x20, 0x40, 0x68]);
+    img.rect(8, 108, 259, 8, [0x20, 0x40, 0x68]);
+    img.rect(8, 14, 259, 94, [0x10, 0x18, 0x28]);
+    img
+}
+
+fn paint_genex() -> Image {
+    let mut img = Image::fill(80, 28, KEY);
+    img.rect(2, 2, 18, 12, [0xFF, 0x50, 0x50]);
+    img.rect(22, 2, 18, 12, [0xC0, 0xC0, 0xC0]);
+    img.rect(42, 2, 18, 12, [0x50, 0xA0, 0xFF]);
+    img.rect(62, 2, 18, 12, [0x50, 0xFF, 0xA0]);
+    img.rect(2, 16, 18, 12, darken([0xFF, 0x50, 0x50]));
+    img
 }
 
 fn paint_text() -> Image {

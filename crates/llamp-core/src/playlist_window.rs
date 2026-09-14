@@ -8,6 +8,8 @@ pub const STEP_Y: i32 = 29;
 pub const CELL_W: i32 = 5;
 /// Locked `text.bmp` cell height. Not a new pitch.
 pub const ROW_H: i32 = 7;
+/// Fixture pledit title strip.
+pub const TITLE_H: i32 = 14;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RowFont {
@@ -86,10 +88,10 @@ impl PlaylistWindow {
     }
 
     pub fn hit_row(&self, y: i32, scroll: usize, len: usize) -> Option<usize> {
-        if y < 0 || y >= self.h - ROW_H {
+        if y < TITLE_H || y >= self.h - ROW_H {
             return None;
         }
-        let index = scroll + (y / ROW_H) as usize;
+        let index = scroll + ((y - TITLE_H) / ROW_H) as usize;
         (index < len).then_some(index)
     }
 
@@ -140,7 +142,7 @@ impl PlaylistWindow {
     }
 
     fn client_rows(&self) -> usize {
-        let client = (self.h - ROW_H).max(ROW_H);
+        let client = (self.h - TITLE_H - ROW_H).max(ROW_H);
         (client / ROW_H) as usize
     }
 }

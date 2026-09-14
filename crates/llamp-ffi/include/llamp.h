@@ -274,6 +274,10 @@ const char *llamp_eq_caption(void);
 
 struct LlampImage llamp_eq_blit(void);
 
+struct LlampImage llamp_playlist_blit(void);
+
+struct LlampImage llamp_gen_blit(void);
+
 void llamp_eq_set_frames(struct LlampFrame main, struct LlampFrame eq);
 
 void llamp_eq_begin_drag(void);

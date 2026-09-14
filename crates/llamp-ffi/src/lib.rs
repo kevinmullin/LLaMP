@@ -218,6 +218,9 @@ pub extern "C" fn llamp_skin_blit_display(marquee_skip: u32) -> LlampImage {
             balance_ppm: snap.balance_ppm,
             seek_ppm: seek_ppm(&snap),
             scope: scope_samples(&snap, &pcm),
+            kbps: 0,
+            khz: 0,
+            spectrum: None,
         },
     );
     image_from(rgba, llamp_skin::MAIN_WIDTH, llamp_skin::MAIN_HEIGHT)
@@ -654,7 +657,39 @@ pub extern "C" fn llamp_eq_blit() -> LlampImage {
         curve_db: curve,
         vis,
     };
-    image_from(llamp_skin::blit_eq(&paint), llamp_skin::EQ_WIDTH, llamp_skin::EQ_HEIGHT)
+    let rgba = match skin_slot().lock() {
+        Ok(slot) => llamp_skin::blit_eq_skin(slot.current(), &paint),
+        Err(_) => llamp_skin::blit_eq(&paint),
+    };
+    image_from(rgba, llamp_skin::EQ_WIDTH, llamp_skin::EQ_HEIGHT)
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_playlist_blit() -> LlampImage {
+    let empty = || LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+    let Ok(window) = playlist_window().lock() else {
+        return empty();
+    };
+    let (w, h) = window.size();
+    let Ok(slot) = skin_slot().lock() else {
+        return empty();
+    };
+    let Some(skin) = slot.current() else {
+        return empty();
+    };
+    image_from(llamp_skin::blit_playlist(skin, w as u32, h as u32), w as u32, h as u32)
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_gen_blit() -> LlampImage {
+    let empty = || LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+    let Ok(slot) = skin_slot().lock() else {
+        return empty();
+    };
+    let Some(skin) = slot.current() else {
+        return empty();
+    };
+    image_from(llamp_skin::blit_gen(skin, 275, 116), 275, 116)
 }
 
 #[no_mangle]

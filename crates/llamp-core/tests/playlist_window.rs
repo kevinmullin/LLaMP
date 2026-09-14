@@ -25,9 +25,10 @@ fn ten_thousand_rows_expose_only_the_visible_window() {
     let range = window.visible_range(10_000, 0);
     assert!(range.end <= range.start + 20, "viewport must not include every row: {range:?}");
     assert!(range.end < 10_000);
-    assert_eq!(window.hit_row(0, 0, 10_000), Some(0));
-    assert_eq!(window.hit_row(7, 40, 10_000), Some(41));
-    assert_eq!(window.hit_row(0, 9990, 10_000), Some(9990));
+    assert_eq!(window.hit_row(14, 0, 10_000), Some(0));
+    assert_eq!(window.hit_row(21, 40, 10_000), Some(41));
+    assert_eq!(window.hit_row(14, 9990, 10_000), Some(9990));
+    assert_eq!(window.hit_row(7, 40, 10_000), None);
     assert_eq!(window.rows_touched(10_000, 0), range.end - range.start);
 }
 

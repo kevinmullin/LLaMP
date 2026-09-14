@@ -15,6 +15,12 @@ pub struct Display<'a> {
     /// Latest mono samples, newest at the end. `None` leaves the pane unpainted.
     /// Painting uses the fixture vis-pane rect. It does not invent a bar count.
     pub scope: Option<&'a [f32]>,
+    /// Digit readout. Idle blit does not stamp this.
+    pub kbps: u16,
+    /// Digit readout. Idle blit does not stamp this.
+    pub khz: u16,
+    /// Band energies 0..1. Bar width is `layout::VIS_BAR_W`. `None` leaves the pane unpainted.
+    pub spectrum: Option<&'a [f32]>,
 }
 
 impl Default for Display<'static> {
@@ -27,6 +33,9 @@ impl Default for Display<'static> {
             balance_ppm: 500,
             seek_ppm: 0,
             scope: None,
+            kbps: 0,
+            khz: 0,
+            spectrum: None,
         }
     }
 }
@@ -40,6 +49,9 @@ pub fn blit_display(skin: &Skin, display: Display<'_>) -> Vec<u8> {
         && display.balance_ppm == 500
         && display.seek_ppm == 0
         && display.scope.is_none()
+        && display.kbps == 0
+        && display.khz == 0
+        && display.spectrum.is_none()
     {
         return buf;
     }
@@ -59,6 +71,29 @@ pub fn blit_display(skin: &Skin, display: Display<'_>) -> Vec<u8> {
     );
     if let Some(samples) = display.scope {
         stamp_scope(&mut buf, skin, samples);
+    }
+    if let Some(bands) = display.spectrum {
+        stamp_spectrum(&mut buf, skin, bands);
+    }
+    if display.kbps > 0 {
+        stamp_text(
+            &mut buf,
+            skin,
+            &format!("{:03}", display.kbps.min(999)),
+            crate::Rect { x: layout::KBPS_ORIGIN.0, y: layout::KBPS_ORIGIN.1, w: 27, h: 13 },
+            9,
+            true,
+        );
+    }
+    if display.khz > 0 {
+        stamp_text(
+            &mut buf,
+            skin,
+            &format!("{:02}", display.khz.min(99)),
+            crate::Rect { x: layout::KHZ_ORIGIN.0, y: layout::KHZ_ORIGIN.1, w: 18, h: 13 },
+            9,
+            true,
+        );
     }
     buf
 }
@@ -170,6 +205,29 @@ fn stamp_scope(buf: &mut [u8], skin: &Skin, samples: &[f32]) {
         let y = (mid - sample * (mid - 0.5)).round() as i32;
         let y = y.clamp(0, pane.h as i32 - 1) as u32;
         put(buf, pane.x + x, pane.y + y, plot);
+    }
+}
+
+fn stamp_spectrum(buf: &mut [u8], skin: &Skin, bands: &[f32]) {
+    let pane = layout::control_rect(crate::Control::VisPane);
+    let bg = skin.vis_colors[0];
+    let bar = skin.vis_colors[18];
+    for y in 0..pane.h {
+        for x in 0..pane.w {
+            put(buf, pane.x + x, pane.y + y, bg);
+        }
+    }
+    let width = layout::VIS_BAR_W;
+    let count = (pane.w / width) as usize;
+    for index in 0..count {
+        let energy = bands.get(index).copied().unwrap_or(0.0).clamp(0.0, 1.0);
+        let bar_h = ((energy * pane.h as f32).round() as u32).min(pane.h);
+        let x0 = pane.x + index as u32 * width;
+        for y in pane.y + pane.h - bar_h..pane.y + pane.h {
+            for dx in 0..width {
+                put(buf, x0 + dx, y, bar);
+            }
+        }
     }
 }
 
