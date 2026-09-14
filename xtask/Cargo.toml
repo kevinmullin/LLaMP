@@ -1,0 +1,10 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+publish = false
+rust-version = "1.97"
+
+[dependencies]
+png = "0.17"
+zip = { version = "2", default-features = false, features = ["deflate"] }

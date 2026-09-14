@@ -45,3 +45,18 @@ Done locally on 2026-09-13. `cargo test --package llamp-audio`: 19 passed.
 - FFT tap: 1024 Hann, hop 512, dB versus a full-scale sine in one bin. The spec does not name a spectral smoothing coefficient. None was added. Peak-hold decay stays with the phase 2–3 golden image.
 
 Not in this phase: crossfade, the DSP plugin slot (the callback slot is a no-op), a CoreAudio backend.
+
+## 2 — headless skin engine
+
+Done locally on 2026-09-13. `cargo test --package llamp-skin`: 22 passed (8 BMP, 9 load, 5 golden).
+
+- Fixture sources are committed PNGs and text in `assets/skins/src/fixture/`, painted by `xtask write-sources`. `xtask emit` packs a stored `.wsz`. The archive is not committed. `xtask` is not a workspace member.
+- ZIP is read in memory. A `..` or absolute entry is skipped and is not opened on the filesystem. Stored and deflate load. Any other method fails the skin and leaves the previous skin. Caps: 32 MiB uncompressed, 4096 px on a side, compression ratio 10000, and `width * height * 4` overflow before allocation. A running total over 32 MiB rejects the skin.
+- BMP tests are separate: bottom-up rows, 4-byte stride, 8-bit palette, 4-bit two-pixels-per-byte, `BI_RLE8` run and absolute mode, and the color key. The key is the top-left pixel of a sprite sheet and is not applied to `main.bmp`. An RLE8 bomb and an overflowing dimension do not allocate past the cap.
+- A missing optional sheet loads with a defect and a `#808080` fallback of the fixture sprite size. `main.bmp` not 275×116 is rejected and the previous skin id stays. The shallowest duplicate wins. Play’s window rect is x=31, not 114.
+- The CPU blit writes `crates/llamp-skin/tests/fixtures/golden/main-275x116.png`. Layout is `docs/spec/skin-atlas.md`. The PNG is 275×116 RGBA8, color type 6, an `sRGB` chunk, and no `iCCP`, `gAMA`, or `cHRM`. `llamp render-skin` writes that file and opens no window. The 2× check doubles those pixels in memory.
+- `png` 0.17.16 `set_source_srgb` wrote only the `sRGB` chunk. That matches the pin. No library deviation.
+- A missing `viscolor.txt` uses the ramp locked in `golden_main.rs`. A non-color line is a defect and does not shift later colors. The fixture omits the file so the loaded skin is that table. `region.txt` points outside the window are clamped and a defect is recorded.
+- `fuzz/fuzz_targets/zip_reader.rs` and `bmp_decoder.rs` exist. `docs/TESTING.md` holds the caps and those targets as a standing requirement, not a one-time check.
+
+Not in this phase: FFI for the atlas, EQ and playlist goldens, the three authored skins, and CoreText for a missing glyph. The blit records a missing scalar by not drawing it.

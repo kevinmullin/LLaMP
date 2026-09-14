@@ -1,0 +1,28 @@
+[package]
+name = "llamp-skin-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+llamp-skin = { path = "../crates/llamp-skin" }
+
+[[bin]]
+name = "zip_reader"
+path = "fuzz_targets/zip_reader.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "bmp_decoder"
+path = "fuzz_targets/bmp_decoder.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

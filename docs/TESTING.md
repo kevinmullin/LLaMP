@@ -44,12 +44,14 @@ We do not claim ITU conformance. We claim we notice a broken pipeline.
 
 ## Hostile skins
 
-`.wsz` files are untrusted. Phase 2 exits on fixtures, not on a hope that Rust panics are harmless.
+This is a standing requirement, not a phase 2 checkbox. `.wsz` files stay untrusted after 1.0. Phase 11 import uses this parser. Do not add a second importer that skips these checks. A change that removes a cap, a fuzz target, or the “no archive path is a filesystem path” rule fails review even if the feature tests pass.
 
 - Zip-slip (`..`, absolute paths) is rejected. No archive path is opened on the filesystem.
-- A compression bomb and a `BI_RLE8` decompression bomb are rejected without exceeding the caps in [skin format](spec/skin-format.md) (32 MiB uncompressed total, 4096 px on a side).
-- Declared BMP dimensions that overflow `width * height * 4` are rejected before allocation.
-- None of these panic. `cargo-fuzz` targets exist for the ZIP reader and the BMP decoder. Phase 11 import uses the same parser.
+- Total uncompressed bytes for one skin stay capped at 32 MiB ([skin format](spec/skin-format.md)). A declared size over the cap, or an inflate that would pass it, rejects the skin before that buffer is allocated.
+- Declared uncompressed size divided by compressed size must be at most 10000. Over that, reject before inflate. A stored sheet has ratio 1. A flat BMP may deflate well under this. A bomb does not.
+- A sheet’s declared width and height stay capped at 4096 on each axis. `width * height * 4` is checked for overflow before any pixel allocation. An overflowing or over-cap sheet rejects the skin.
+- A compression bomb and a `BI_RLE8` decompression bomb are rejected without exceeding those caps, and without panicking.
+- `cargo-fuzz` targets `zip_reader` and `bmp_decoder` in `fuzz/` must remain. Run them with nightly `cargo fuzz` when a crash is suspected. They are not a one-time green check.
 
 ## Library
 

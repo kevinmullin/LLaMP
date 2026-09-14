@@ -5,3 +5,12 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 rust-version.workspace = true
+
+[dependencies]
+png = "0.17"
+sha2 = "0.10"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+xtask = { path = "../../xtask" }
+zip = { version = "2", default-features = false, features = ["deflate"] }
