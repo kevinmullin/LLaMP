@@ -10,6 +10,7 @@ public final class MainWindow: NSWindow {
     public var onOpenPlaylist: (() -> Void)?
     public var onOpenBrowser: (() -> Void)?
     public var onOpenVisualizer: (() -> Void)?
+    public var onOpenLyrics: (() -> Void)?
     private var marqueeSkip: UInt32 = 0
     private var lastPull = ""
     private var displayTimer: Timer?

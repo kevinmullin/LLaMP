@@ -1,0 +1,11 @@
+{
+  "id": "llamp.lyrics.lrclib",
+  "name": "LRCLIB",
+  "version": "0.1.0",
+  "abi": "^1.0.0",
+  "kind": "LyricsProvider",
+  "capabilities": {
+    "network_hosts": ["lrclib.net"],
+    "filesystem": []
+  }
+}

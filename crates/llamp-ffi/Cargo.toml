@@ -12,6 +12,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [dependencies]
 llamp-audio = { path = "../llamp-audio" }
 llamp-core = { path = "../llamp-core" }
+llamp-library = { path = "../llamp-library" }
 llamp-plugin-api = { path = "../llamp-plugin-api" }
 llamp-plugin-host = { path = "../llamp-plugin-host" }
 llamp-skin = { path = "../llamp-skin" }

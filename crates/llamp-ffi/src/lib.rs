@@ -9,7 +9,9 @@ use llamp_plugin_api::{MediaSource, SourceItem};
 use llamp_plugin_host::Registry;
 use llamp_source_local::LocalSource;
 
+mod lyrics;
 mod vis;
+pub use lyrics::*;
 pub use vis::*;
 
 const _: () = assert!(llamp_core::TITLE_CAP == 256);
@@ -941,12 +943,12 @@ fn playlist_window() -> &'static Mutex<llamp_core::PlaylistWindow> {
     WINDOW.get_or_init(|| Mutex::new(llamp_core::PlaylistWindow::new()))
 }
 
-struct LibrarySlot {
-    source: Option<std::sync::Arc<LocalSource>>,
+pub(crate) struct LibrarySlot {
+    pub source: Option<std::sync::Arc<LocalSource>>,
     hits: Vec<SourceItem>,
 }
 
-fn library_slot() -> &'static Mutex<LibrarySlot> {
+pub(crate) fn library_slot() -> &'static Mutex<LibrarySlot> {
     static SLOT: OnceLock<Mutex<LibrarySlot>> = OnceLock::new();
     SLOT.get_or_init(|| {
         Mutex::new(LibrarySlot {
@@ -1183,11 +1185,13 @@ pub struct LlampGroup {
     pub playlist: LlampFrame,
     pub browser: LlampFrame,
     pub vis: LlampFrame,
+    pub lyrics: LlampFrame,
     pub main_docked: u8,
     pub eq_docked: u8,
     pub playlist_docked: u8,
     pub browser_docked: u8,
     pub vis_docked: u8,
+    pub lyrics_docked: u8,
 }
 
 /// Minimum playlist size. Resize is 25×29 from this. A mid-step size is rejected.
@@ -1487,6 +1491,7 @@ fn pane_from(which: u32) -> Option<llamp_core::Pane> {
         2 => Some(llamp_core::Pane::Playlist),
         3 => Some(llamp_core::Pane::Browser),
         4 => Some(llamp_core::Pane::Vis),
+        5 => Some(llamp_core::Pane::Lyrics),
         _ => None,
     }
 }
@@ -1507,11 +1512,13 @@ fn group_from(moved: llamp_core::GroupMove) -> LlampGroup {
         playlist: frame(llamp_core::Pane::Playlist),
         browser: frame(llamp_core::Pane::Browser),
         vis: frame(llamp_core::Pane::Vis),
+        lyrics: frame(llamp_core::Pane::Lyrics),
         main_docked: u8::from(moved.docked(llamp_core::Pane::Main)),
         eq_docked: u8::from(moved.docked(llamp_core::Pane::Eq)),
         playlist_docked: u8::from(moved.docked(llamp_core::Pane::Playlist)),
         browser_docked: u8::from(moved.docked(llamp_core::Pane::Browser)),
         vis_docked: u8::from(moved.docked(llamp_core::Pane::Vis)),
+        lyrics_docked: u8::from(moved.docked(llamp_core::Pane::Lyrics)),
     }
 }
 
@@ -1528,11 +1535,13 @@ fn empty_group() -> LlampGroup {
         playlist: zero(),
         browser: zero(),
         vis: zero(),
+        lyrics: zero(),
         main_docked: 0,
         eq_docked: 0,
         playlist_docked: 0,
         browser_docked: 0,
         vis_docked: 0,
+        lyrics_docked: 0,
     }
 }
 

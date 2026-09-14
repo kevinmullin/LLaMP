@@ -207,12 +207,59 @@ impl Session {
     }
 
     pub fn toggle_play(&self) {
-        let next = match self.playing.load(Ordering::Relaxed) {
-            TRANSPORT_PLAYING => TRANSPORT_PAUSED,
-            _ => TRANSPORT_PLAYING,
-        };
-        self.playing.store(next, Ordering::Relaxed);
-        self.snap.write(|snap| snap.transport = next);
+        match self.playing.load(Ordering::Relaxed) {
+            TRANSPORT_PLAYING => {
+                let duration = self.snap.read().duration_frames;
+                let pos = self.position(duration);
+                self.base.store(pos, Ordering::Relaxed);
+                self.mark.store(
+                    self.events.played_frames.load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
+                self.playing.store(TRANSPORT_PAUSED, Ordering::Relaxed);
+                self.snap.write(|snap| snap.transport = TRANSPORT_PAUSED);
+            }
+            _ => {
+                self.mark.store(
+                    self.events.played_frames.load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
+                self.playing.store(TRANSPORT_PLAYING, Ordering::Relaxed);
+                self.snap.write(|snap| snap.transport = TRANSPORT_PLAYING);
+            }
+        }
+    }
+
+    /// Device reopen at a new rate. Keeps the same millisecond so lyrics do not drift.
+    /// `reset_played` is the 1b case: the new stream starts at zero and counts an underrun.
+    pub fn reopen_device(&self, new_rate: u32, reset_played: bool) {
+        let snap = self.snap.read();
+        let old_rate = snap.sample_rate.max(1);
+        let pos = self.position(snap.duration_frames);
+        let new_pos = pos.saturating_mul(u64::from(new_rate)) / u64::from(old_rate);
+        let new_duration = snap
+            .duration_frames
+            .saturating_mul(u64::from(new_rate))
+            / u64::from(old_rate);
+        if reset_played {
+            self.events.played_frames.store(0, Ordering::Relaxed);
+            self.events.underruns.fetch_add(1, Ordering::Relaxed);
+        }
+        self.base.store(new_pos, Ordering::Relaxed);
+        self.mark.store(
+            self.events.played_frames.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
+        self.events.sample_rate.store(new_rate, Ordering::Relaxed);
+        self.snap.write(|snap| {
+            snap.sample_rate = new_rate;
+            snap.duration_frames = new_duration;
+        });
+    }
+
+    pub fn clock_ms(&self) -> i64 {
+        let snap = self.poll();
+        llamp_library::clock_ms(snap.position_frames, snap.sample_rate, 0)
     }
 
     pub fn stop(&self) {
@@ -282,6 +329,9 @@ impl Session {
     }
 
     fn position(&self, duration: u64) -> u64 {
+        if self.playing.load(Ordering::Relaxed) == TRANSPORT_PAUSED {
+            return self.base.load(Ordering::Relaxed).min(duration);
+        }
         let played = self.events.played_frames.load(Ordering::Relaxed);
         let mark = self.mark.load(Ordering::Relaxed);
         let delta = played.saturating_sub(mark);

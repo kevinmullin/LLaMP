@@ -1,0 +1,15 @@
+package llamp:lyrics@1.0.0;
+
+interface host-http {
+  get: func(host: string, path: string, query: string) -> result<string, string>;
+}
+
+interface lyrics-provider {
+  fetch: func(artist: string, title: string) -> result<string, string>;
+  fetch-match: func(artist: string, title: string, album: string, duration-seconds: u32) -> result<string, string>;
+}
+
+world lyrics {
+  import host-http;
+  export lyrics-provider;
+}

@@ -28,6 +28,10 @@ impl LocalSource {
     pub fn enqueue(&self, path: &Path) -> Result<(), String> {
         self.lib.enqueue(path)
     }
+
+    pub fn library(&self) -> &Library {
+        &self.lib
+    }
 }
 
 impl MediaSource for LocalSource {

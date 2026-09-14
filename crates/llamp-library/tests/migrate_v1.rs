@@ -5,7 +5,7 @@ use std::fs;
 use rusqlite::Connection;
 
 #[test]
-fn v1_database_upgrades_to_v2_without_losing_rows() {
+fn v1_database_upgrades_without_losing_rows() {
     let root = std::env::temp_dir().join(format!("llamp-migrate-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(&root).expect("dir");
@@ -28,7 +28,7 @@ fn v1_database_upgrades_to_v2_without_losing_rows() {
     }
 
     let lib = llamp_library::Library::open(&db).expect("upgrade");
-    assert_eq!(lib.user_version().expect("version"), 2);
+    assert_eq!(lib.user_version().expect("version"), 3);
     assert_eq!(lib.count_referenced().expect("count"), 2);
     assert_eq!(
         lib.storage_of(std::path::Path::new("/music/a.wav"))

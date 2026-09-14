@@ -194,6 +194,18 @@ pub trait MediaSource: Send + Sync {
     fn resolve(&self, id: &str) -> Result<Resolved, String>;
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LyricQuery {
+    pub artist: String,
+    pub title: String,
+    pub album: String,
+    pub duration_seconds: u32,
+}
+
+pub trait LyricsProvider: Send + Sync {
+    fn fetch(&self, query: &LyricQuery) -> Result<String, String>;
+}
+
 pub fn item_from_path(path: PathBuf) -> SourceItem {
     let label = path.to_string_lossy().into_owned();
     SourceItem {

@@ -350,6 +350,7 @@ public final class WindowDock {
     public weak var playlist: PlaylistWindow?
     public weak var browser: BrowserWindow?
     public weak var visualizer: VisWindow?
+    public weak var lyrics: LyricsWindow?
     private var docked = false
     private var groupOrigin: NSPoint?
     private var lastMain = Frame(x: 0, y: 0)
@@ -372,10 +373,15 @@ public final class WindowDock {
         self.visualizer = visualizer
     }
 
+    public func attach(lyrics: LyricsWindow) {
+        self.lyrics = lyrics
+    }
+
     public func detachExtras() {
         playlist = nil
         browser = nil
         visualizer = nil
+        lyrics = nil
         groupOrigin = nil
     }
 
@@ -406,7 +412,7 @@ public final class WindowDock {
     }
 
     public func track(which: UInt32, event: NSEvent) {
-        if playlist != nil || browser != nil || visualizer != nil {
+        if playlist != nil || browser != nil || visualizer != nil || lyrics != nil {
             trackGroup(which: which, event: event)
             return
         }
@@ -513,6 +519,7 @@ public final class WindowDock {
         publish(2, playlist, fallback: (100_000, 0, 0, 0))
         publish(3, browser, fallback: (100_000, 100_000, 0, 0))
         publish(4, visualizer, fallback: (100_000, 200_000, 0, 0))
+        publish(5, lyrics, fallback: (100_000, 300_000, 0, 0))
     }
 
     private func publish(_ which: UInt32, _ window: NSWindow?, fallback: (Int32, Int32, Int32, Int32)) {
@@ -539,6 +546,7 @@ public final class WindowDock {
         if playlist != nil { place(playlist, group.playlist, origin, scale) }
         if browser != nil { place(browser, group.browser, origin, scale) }
         if visualizer != nil { place(visualizer, group.vis, origin, scale) }
+        if lyrics != nil { place(lyrics, group.lyrics, origin, scale) }
     }
 
     private func place(_ window: NSWindow?, _ frame: LlampFrame, _ origin: NSPoint, _ scale: CGFloat) {

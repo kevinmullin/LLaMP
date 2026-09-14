@@ -1,10 +1,10 @@
-//! Snap and dock. 10 skin pixels to snap, 12 to undock. Five windows share one group.
+//! Snap and dock. 10 skin pixels to snap, 12 to undock. Six windows share one group.
 
 use crate::eq_window::Frame;
 
 pub(crate) const SNAP: i32 = 10;
 pub(crate) const UNDOCK2: i32 = 12 * 12;
-const PANE_N: usize = 5;
+const PANE_N: usize = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pane {
@@ -13,6 +13,7 @@ pub enum Pane {
     Playlist = 2,
     Browser = 3,
     Vis = 4,
+    Lyrics = 5,
 }
 
 impl Pane {
@@ -27,6 +28,7 @@ impl Pane {
             Pane::Playlist,
             Pane::Browser,
             Pane::Vis,
+            Pane::Lyrics,
         ]
     }
 }
@@ -63,6 +65,7 @@ impl DockGroup {
                 Frame::new(275, 0, 275, 116),
                 Frame::new(275, 140, 275, 116),
                 Frame::new(550, 0, 275, 116),
+                Frame::new(550, 140, 275, 116),
             ],
             docked: [false; PANE_N],
             accum_x: 0,

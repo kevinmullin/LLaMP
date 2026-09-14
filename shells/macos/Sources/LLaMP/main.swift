@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var playlist: PlaylistWindow?
     private var browser: BrowserWindow?
     private var visualizer: VisWindow?
+    private var lyrics: LyricsWindow?
     private let started = ContinuousClock.now
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -33,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.onOpenPlaylist = { [weak self] in self?.openPlaylist() }
         window.onOpenBrowser = { [weak self] in self?.openBrowser() }
         window.onOpenVisualizer = { [weak self] in self?.openVisualizer() }
+        window.onOpenLyrics = { [weak self] in self?.openLyrics() }
         if let skin = argumentValue("--skin"), let data = try? Data(contentsOf: URL(fileURLWithPath: skin)), !data.isEmpty {
             window.loadSkin(data)
         }
@@ -53,6 +55,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if CommandLine.arguments.contains("--show-vis") {
             openVisualizer()
+        }
+        if CommandLine.arguments.contains("--show-lyrics") {
+            openLyrics()
         }
         if let track = argumentValue("--play") {
             let refs = argumentValue("--refs") ?? FileManager.default.temporaryDirectory.path
@@ -126,6 +131,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             WindowDock.shared.attach(visualizer: window)
         }
         visualizer?.orderFront(nil)
+    }
+
+    private func openLyrics() {
+        if lyrics == nil {
+            let window = LyricsWindow()
+            lyrics = window
+            WindowDock.shared.attach(lyrics: window)
+        }
+        lyrics?.orderFront(nil)
     }
 }
 

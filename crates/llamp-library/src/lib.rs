@@ -1,6 +1,8 @@
 //! SQLite library. Music stays at the granted path. See ADR 007.
 
 mod artwork;
+mod lrc;
+mod lyrics;
 mod m3u8;
 mod tags;
 mod watch;
@@ -12,6 +14,12 @@ use std::sync::{Arc, Mutex};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub use artwork::DEFAULT_CAP as ARTWORK_CAP;
+pub use lrc::{parse_lrc, write_lrc};
+pub use lyrics::{
+    active_at, clock_ms, clamp_offset, lyrics_from_tag, read_embedded, read_sidecar, resolve_lyrics,
+    LrclibConsent, LyricCursor, LyricDoc, LyricKind, LyricLine, LyricQuery, LyricSource, LyricTags,
+    LyricWord, OffsetSave, MISS_RETRY_SECS, OFFSET_MAX_MS, OFFSET_MIN_MS, OFFSET_STEP_MS,
+};
 pub use tags::{LoftyTags, TagStore, TrackTags};
 
 use crate::watch::Watch;
@@ -520,6 +528,12 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         conn.execute_batch(include_str!("../migrations/002.sql"))
             .map_err(|err| err.to_string())?;
         conn.pragma_update(None, "user_version", 2)
+            .map_err(|err| err.to_string())?;
+    }
+    if pragma_user_version(conn)? < 3 {
+        conn.execute_batch(include_str!("../migrations/003.sql"))
+            .map_err(|err| err.to_string())?;
+        conn.pragma_update(None, "user_version", 3)
             .map_err(|err| err.to_string())?;
     }
     Ok(())

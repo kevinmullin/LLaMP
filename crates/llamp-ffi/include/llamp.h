@@ -113,11 +113,13 @@ typedef struct LlampGroup {
   struct LlampFrame playlist;
   struct LlampFrame browser;
   struct LlampFrame vis;
+  struct LlampFrame lyrics;
   uint8_t main_docked;
   uint8_t eq_docked;
   uint8_t playlist_docked;
   uint8_t browser_docked;
   uint8_t vis_docked;
+  uint8_t lyrics_docked;
 } LlampGroup;
 
 typedef struct LlampVisPacket {
@@ -414,6 +416,66 @@ void llamp_group_begin_drag(void);
 struct LlampGroup llamp_group_drag(uint32_t which, int32_t dx, int32_t dy);
 
 struct LlampGroup llamp_group_end_drag(void);
+
+struct LlampSize llamp_lyrics_min_size(void);
+
+struct LlampSize llamp_lyrics_propose_size(int32_t width, int32_t height);
+
+struct LlampImage llamp_lyrics_chrome_blit(uint32_t width, uint32_t height);
+
+struct LlampFrame llamp_lyrics_client_rect(int32_t width, int32_t height);
+
+struct LlampFrame llamp_lyrics_text_origin(int32_t scale);
+
+struct LlampFrame llamp_lyrics_line_rect(int32_t index, int32_t scroll_px, int32_t scale);
+
+struct LlampFrame llamp_lyrics_mark_rect(int32_t scale);
+
+/**
+ * 0 empty, 1 unsynced, 2 synced.
+ */
+uint32_t llamp_lyrics_kind(void);
+
+uint32_t llamp_lyrics_line_count(void);
+
+int32_t llamp_lyrics_line_text(uint32_t index, char *out, size_t len);
+
+int32_t llamp_lyrics_active_line(void);
+
+int32_t llamp_lyrics_active_word(void);
+
+uint32_t llamp_lyrics_word_count(uint32_t line);
+
+int32_t llamp_lyrics_word_text(uint32_t line, uint32_t word, char *out, size_t len);
+
+int32_t llamp_lyrics_load(const char *path);
+
+const char *llamp_lyrics_privacy_note(void);
+
+/**
+ * 0 unknown, 1 accept, 2 decline.
+ */
+uint32_t llamp_lyrics_consent(void);
+
+int32_t llamp_lyrics_set_consent(uint32_t value);
+
+int32_t llamp_lyrics_offset_ms(void);
+
+int32_t llamp_lyrics_step_offset(int32_t steps);
+
+int32_t llamp_lyrics_save_offset(void);
+
+uint8_t llamp_lyrics_sidecar_written(void);
+
+const char *llamp_lyrics_sidecar_note(void);
+
+uint8_t llamp_lyrics_from_lrclib(void);
+
+int32_t llamp_lyrics_lookup(void);
+
+uint32_t llamp_text_current(void);
+
+uint32_t llamp_text_selected_bg(void);
 
 void llamp_vis_surface_reset(void);
 

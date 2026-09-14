@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use llamp_plugin_api::{Manifest, MediaSource, Refuse, HOST_ABI};
 
+pub mod lyrics;
 pub mod sandbox;
 pub mod vis_budget;
 
