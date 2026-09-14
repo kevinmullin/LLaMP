@@ -1,0 +1,13 @@
+---
+description: The Rust core has no UI; shells do not parse skins or run DSP
+alwaysApply: true
+---
+
+# Core and shell split
+
+- Rust crates do not open windows, draw chrome, or import AppKit, Win32, or GTK.
+- `llamp-ffi` is the only crate a shell links. The ABI is C: handles, POD, buffers, error codes. No Rust types across the boundary. cbindgen is the source of truth.
+- Shells own windows, input, accessibility, and integer-scale blitting. They do not parse BMP or ZIP.
+- The shell reads playback capability flags. It does not branch on provider name strings such as `"spotify"`.
+- MusicKit, if it ships, stays in the Swift shell. It is Tier B. It does not feed the decode graph.
+- Details: `docs/ARCHITECTURE.md`.

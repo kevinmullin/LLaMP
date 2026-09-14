@@ -1,0 +1,12 @@
+---
+description: Ship macOS 1.0 before other platforms; cut remote features before the local player
+alwaysApply: true
+---
+
+# Phase cut order
+
+- macOS 1.0 is the end of phase 12 in `docs/PLAN.md`. Do not start the Windows shell before that notarized DMG exit is met. Do not start the Linux shell before Windows has survived a demo without an ABI break.
+- If a gate fails, cut in order: Apple Music, public Spotify login (bring-your-own Client ID may remain), podcasts, radio directory. Do not cut local playback, EQ, playlist, library, the 76×16 visualizer, lyrics, skin import, the three default skins, or VoiceOver.
+- Subsonic, Jellyfin, Plex, Milkdrop, process taps, and a lyrics tap-to-sync editor are post-1.0. Do not pull them into a 1.0 phase to be helpful.
+- Spotify is a Connect controller with the user’s own Client ID. Do not block the build on extended quota.
+- Read `docs/PLAN.md` for the phase you are in before adding scope.

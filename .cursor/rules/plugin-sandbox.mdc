@@ -1,0 +1,14 @@
+---
+description: User plugins are WASM with declared capabilities; no audio callback, no GPU handle
+alwaysApply: true
+---
+
+# Plugin sandbox
+
+- User-installed plugins are wasmtime components. Do not `dlopen` a user dylib. Do not set `disable-library-validation`.
+- No ambient network and no ambient filesystem. Hosts and paths come from the manifest and a user grant.
+- User WASM may be `MediaSource`, `LyricsProvider`, `Metadata`, or a CPU visualizer that returns RGBA. Not DSP, not output, not a wgpu device.
+- A visualizer that misses its frame budget is killed. Audio must already have continued.
+- Do not add Extism. Do not implement Winamp `in_*.dll` / `dsp_*.dll` / `vis_*.dll` compatibility.
+- Do not invent C ABI symbols. Phase 6 pins them with cbindgen.
+- Details: `docs/spec/plugin-abi.md` and `docs/adr/004-plugin-runtime.md`.

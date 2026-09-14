@@ -1,0 +1,14 @@
+---
+description: Clean-room rules and trademark limits for LLaMP
+alwaysApply: true
+---
+
+# Clean-room and trademarks
+
+- Do not use the 2024 Winamp source drop, or anything copied from it.
+- Do not add Nullsoft’s base skin or any third-party `.wsz` to the repo or the app bundle.
+- Do not copy Webamp, Llammp, or another player’s source into this tree. Reading published format notes and Webamp for behavior is allowed. Pasting their code is not.
+- “Winamp” appears only as “compatible with classic Winamp skins.” Not in the product name, bundle id, or menu-bar label.
+- YouTube, SoundCloud, DRM circumvention, and scraping lyric or music APIs are out. Do not reopen them.
+- Our license is MIT OR Apache-2.0. Do not add FFmpeg or `fdk-aac`.
+- Details: `docs/LEGAL.md`.

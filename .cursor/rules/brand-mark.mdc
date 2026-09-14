@@ -1,0 +1,13 @@
+---
+description: Do not redraw, rescale linearly, or paint the llama mark into a skin
+alwaysApply: true
+---
+
+# Product mark
+
+- The only logo is `assets/brand/llamp-mark.png`. Do not redraw it. Do not replace it with Meta’s llama or Winamp’s splash llama.
+- Scale it by integer nearest-neighbor only. A soft fringe is quantized in a build step, not painted over.
+- It may appear on the bundle icon, DMG, Sparkle, About, and the library and lyrics empty states.
+- Do not composite it into `main.bmp`, `gen.bmp`, any other skin sheet, a user `.wsz`, the 76×16 pane, or the marquee.
+- The macOS squircle applies to the bundle icon only.
+- Details: `docs/spec/brand.md`.

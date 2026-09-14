@@ -1,0 +1,11 @@
+---
+description: This repo uses GitHub, not GitLab merge requests
+alwaysApply: true
+---
+
+# GitHub, not GitLab
+
+- Source and CI are GitHub. Use `gh` and GitHub issue numbers (`#123`).
+- Do not open GitLab merge requests, do not require a GitLab username, and do not write CI for GitLab shared runners.
+- Conventional commits still apply (`feat`, `fix`, `chore`, `docs`, `refactor`, `test`).
+- A `macos-26` runner is required for the app. Do not point CI at an older macOS label to make a workflow green. Do not lower `MACOSX_DEPLOYMENT_TARGET` to make a workflow green.

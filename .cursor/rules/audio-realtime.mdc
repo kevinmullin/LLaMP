@@ -1,0 +1,14 @@
+---
+description: Audio callback must not allocate, lock, or do I/O
+alwaysApply: true
+---
+
+# Audio realtime
+
+- The audio callback does not allocate, lock, or do I/O. No `Vec` growth, no mutex, no file, no log that takes a lock.
+- Rings are `rtrb`, allocated before the stream starts. Analysis gets a `try_push`. If the ring is full, drop the chunk.
+- UI snapshots are a seqlock or triple buffer plus an atomic frame counter. The UI never waits on the callback.
+- One resample, on the decode thread, to the device rate. EQ coefficient changes slew. Do not write a live biquad from the UI thread.
+- AAC-LC is not gapless. Opus uses `libopus`, not unfinished native `symphonia` Opus.
+- Tier B (`produces_pcm` false) does not run this graph.
+- Details: `docs/spec/audio-pipeline.md`.

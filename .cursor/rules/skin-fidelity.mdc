@@ -1,0 +1,13 @@
+---
+description: Skins stay 1x pixel art; blur is a bug
+alwaysApply: true
+---
+
+# Skin fidelity
+
+- Main window is 275×116 skin pixels. EQ is 275×116. Playlist steps are 25 px horizontal and 29 px vertical from that minimum. Shade on main and EQ is 14 px.
+- Scale factors are 1, 2, and 4, nearest-neighbor. Double-size doubles skin pixels, then the display factor multiplies. Fractional OS scales letterbox. Bilinear skin chrome is a bug.
+- `main.bmp` that is not 275×116 fails the skin. Do not scale it to fit.
+- Shells consume the core atlas. They do not parse BMP.
+- Bitmap font for classic chrome only. Library, lyrics, and any playlist row with a missing glyph use platform text in `pledit.txt` colors.
+- Sprite coordinates that are not fixture-locked do not get invented. See `docs/spec/skin-format.md`.
