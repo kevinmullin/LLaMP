@@ -26,16 +26,32 @@ public final class EqWindow: NSWindow {
         chrome.onBackgroundDrag = { event in
             WindowDock.shared.track(which: 1, event: event)
         }
+        resizeToSkin()
+        chrome.reload()
+    }
+
+    public override func orderFront(_ sender: Any?) {
+        startDisplayTimer()
+        super.orderFront(sender)
+    }
+
+    public override func orderOut(_ sender: Any?) {
+        stopDisplayTimer()
+        super.orderOut(sender)
+    }
+
+    private func startDisplayTimer() {
+        guard displayTimer == nil else { return }
         displayTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.pullDisplay()
             }
         }
-        resizeToSkin()
-        chrome.reload()
-        if let screen = NSScreen.main {
-            setFrameOrigin(NSPoint(x: screen.visibleFrame.minX + 32, y: screen.visibleFrame.midY))
-        }
+    }
+
+    private func stopDisplayTimer() {
+        displayTimer?.invalidate()
+        displayTimer = nil
     }
 
     public override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {

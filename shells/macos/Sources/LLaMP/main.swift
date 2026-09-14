@@ -12,13 +12,21 @@ app.run()
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let window = MainWindow()
-    let equalizer = EqWindow()
+    private var equalizer: EqWindow?
     private let started = ContinuousClock.now
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        EqStore.install()
-        WindowDock.shared.attach(main: window, equalizer: equalizer)
-        window.onOpenEqualizer = { WindowDock.shared.showEqualizer() }
+        window.makeKeyAndOrderFront(nil)
+        window.contentView?.display()
+        if CommandLine.arguments.contains("--paint-and-exit") {
+            let elapsed = started.duration(to: .now)
+            let ms = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000
+            print("painted \(Int(ms))")
+            fflush(stdout)
+            NSApp.terminate(nil)
+            return
+        }
+        window.onOpenEqualizer = { [weak self] in self?.openEqualizer() }
         if let skin = argumentValue("--skin"), let data = try? Data(contentsOf: URL(fileURLWithPath: skin)), !data.isEmpty {
             window.loadSkin(data)
         }
@@ -28,10 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             frame.origin.y = screen.visibleFrame.midY
             window.setFrameOrigin(frame.origin)
         }
-        window.makeKeyAndOrderFront(nil)
-        window.contentView?.display()
         if CommandLine.arguments.contains("--show-eq") {
-            WindowDock.shared.showEqualizer()
+            openEqualizer()
         }
         if let track = argumentValue("--play") {
             let refs = argumentValue("--refs") ?? FileManager.default.temporaryDirectory.path
@@ -42,14 +48,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         NSApp.activate(ignoringOtherApps: true)
-        if CommandLine.arguments.contains("--paint-and-exit") {
-            let elapsed = started.duration(to: .now)
-            let ms = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000
-            print("painted \(Int(ms))")
-            fflush(stdout)
-            NSApp.terminate(nil)
-            return
-        }
         if let scene = budgetArguments() {
             window.loadSkin(scene.wsz)
             NSApp.activate(ignoringOtherApps: true)
@@ -75,6 +73,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fputs("budget scene did not reach a playing track\n", stderr)
             exit(1)
         }
+    }
+
+    private func openEqualizer() {
+        EqStore.install()
+        if equalizer == nil {
+            let eq = EqWindow()
+            equalizer = eq
+            WindowDock.shared.attach(main: window, equalizer: eq)
+        }
+        WindowDock.shared.showEqualizer()
     }
 }
 
