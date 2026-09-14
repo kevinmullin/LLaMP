@@ -4,6 +4,7 @@ mod atlas;
 mod blit;
 mod bmp;
 mod config;
+mod eq_blit;
 mod layout;
 mod png_io;
 mod zip;
@@ -16,7 +17,8 @@ use sha2::{Digest, Sha256};
 
 pub use blit::{scale_nearest, Display};
 pub use bmp::decode_bmp;
-pub use config::default_vis_colors;
+pub use config::{default_playlist_colors, default_vis_colors};
+pub use eq_blit::{blit_eq, eq_controls, EqControl, EqPaint, APPLYING_CAPTION, AUTO_LABEL, DISABLED_CAPTION, EQ_HEIGHT, EQ_WIDTH};
 
 pub const MAIN_WIDTH: u32 = 275;
 pub const MAIN_HEIGHT: u32 = 116;

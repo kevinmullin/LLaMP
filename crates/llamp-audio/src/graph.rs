@@ -29,6 +29,13 @@ impl Stage {
         Self { eq: Eq::new(sample_rate), limiter: Limiter::new(sample_rate), replaygain: 1.0 }
     }
 
+    /// The live callback and `llamp play` use this. Sliders write its targets.
+    pub fn for_playback(sample_rate: u32) -> Self {
+        let mut stage = Self::new(sample_rate);
+        stage.eq.bind_ui_sliders();
+        stage
+    }
+
     pub fn set_replaygain_db(&mut self, db: f32) {
         self.replaygain = 10f32.powf(db / 20.0);
     }
@@ -102,6 +109,11 @@ impl Callback {
         let _ = self.stage.process(out);
     }
 
+    /// The window slider path. Does not copy coefficients onto this callback.
+    pub fn bind_ui_sliders(&mut self) {
+        self.stage.eq.bind_ui_sliders();
+    }
+
     pub fn push_pcm(&mut self, interleaved: &[f32]) -> usize {
         let mut n = 0;
         for sample in interleaved {
@@ -144,4 +156,41 @@ pub fn join_gapless(a: &Path, b: &Path) -> Result<Vec<f32>, DecodeError> {
 
 pub fn seek_landing(path: &Path, frame: u64, period: u32) -> Result<decode::SeekLanding, DecodeError> {
     decode::seek_to(path, frame, period)
+}
+
+/// Decode-and-graph path `llamp play` uses, without opening a device.
+/// `set_band` is the CLI drag or a window slider. Ten slices, one band each.
+pub fn band_sweep_ratios(pcm: &[f32], rate: u32, mut set_band: impl FnMut(usize, f32)) -> [f32; 10] {
+    crate::set_eq_enabled(true);
+    let frames = pcm.len() / 2;
+    let per = frames / 10;
+    let mut stage = Stage::for_playback(rate);
+    let settle = ((rate as usize / 10).max(256)) * 2;
+    std::array::from_fn(|band| {
+        for other in 0..10 {
+            set_band(other, 0.0);
+        }
+        let mut silence = vec![0f32; settle];
+        stage.process(&mut silence);
+        let start = band * per * 2;
+        let end = start + per * 2;
+        let mut flat = pcm[start..end].to_vec();
+        stage.process(&mut flat);
+        set_band(band, 12.0);
+        let mut silence = vec![0f32; settle];
+        stage.process(&mut silence);
+        let mut boost = pcm[start..end].to_vec();
+        stage.process(&mut boost);
+        let flat_rms = rms_slice(&flat);
+        if flat_rms < 1e-8 {
+            0.0
+        } else {
+            rms_slice(&boost) / flat_rms
+        }
+    })
+}
+
+fn rms_slice(samples: &[f32]) -> f32 {
+    let sum: f32 = samples.iter().map(|s| s * s).sum();
+    (sum / samples.len() as f32).sqrt()
 }

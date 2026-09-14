@@ -79,11 +79,32 @@ typedef struct LlampPlayback {
   uint8_t vis_mode;
   uint8_t always_on_top;
   uint8_t double_size;
+  uint8_t supports_eq;
   uint16_t volume_ppm;
   uint16_t balance_ppm;
   uint16_t title_len;
   uint8_t title[256];
 } LlampPlayback;
+
+typedef struct LlampFrame {
+  int32_t x;
+  int32_t y;
+  int32_t w;
+  int32_t h;
+} LlampFrame;
+
+typedef struct LlampDock {
+  int32_t main_x;
+  int32_t main_y;
+  int32_t main_w;
+  int32_t main_h;
+  int32_t eq_x;
+  int32_t eq_y;
+  int32_t eq_w;
+  int32_t eq_h;
+  uint8_t docked;
+  uint8_t group_on_top;
+} LlampDock;
 
 /**
  * NUL-terminated crate version. The caller does not free this pointer.
@@ -195,5 +216,63 @@ void llamp_transport_set_slider(uint32_t id,
 int32_t llamp_budget_prepare(const char *track, const char *refs_dir);
 
 uint32_t llamp_reference_count(void);
+
+/**
+ * Equalizer size in skin pixels. Same locked rectangle as the main window.
+ */
+struct LlampSize llamp_eq_size(void);
+
+uint32_t llamp_eq_control_count(void);
+
+struct LlampControl llamp_eq_control_at(uint32_t index);
+
+/**
+ * Magnitude at a band center after the slew settles. Bound to the window targets.
+ */
+float llamp_eq_center_db(uint32_t band);
+
+/**
+ * Slider drag. `id` 6 is preamp, 7..16 are bands. `millidb` is thousandths of a dB.
+ * Writes the atomic target. Does not redesign coefficients.
+ */
+void llamp_eq_drag(uint32_t id, int32_t millidb);
+
+void llamp_eq_press(uint32_t id);
+
+int32_t llamp_eq_save_preset(const char *name);
+
+int32_t llamp_eq_load_preset(const char *name);
+
+int32_t llamp_eq_save_autoload(void);
+
+int32_t llamp_eq_save_default(void);
+
+uint32_t llamp_eq_preset_count(void);
+
+/**
+ * Writes a NUL-terminated name into `out`. Returns `LLAMP_ERR_INVALID` if it does not fit.
+ */
+int32_t llamp_eq_preset_name(uint32_t index, char *out, size_t len);
+
+int32_t llamp_eq_set_store(const char *path);
+
+/**
+ * Static string. The caller does not free it.
+ */
+const char *llamp_eq_caption(void);
+
+struct LlampImage llamp_eq_blit(void);
+
+void llamp_eq_set_frames(struct LlampFrame main, struct LlampFrame eq);
+
+void llamp_eq_begin_drag(void);
+
+struct LlampDock llamp_eq_drag_window(uint32_t which, int32_t dx, int32_t dy);
+
+struct LlampDock llamp_eq_end_drag(void);
+
+uint32_t llamp_text_color(void);
+
+uint32_t llamp_text_bg(void);
 
 #endif  /* LLAMP_H */

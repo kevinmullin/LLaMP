@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex};
 use llamp_audio::cli::LoopPlayback;
 use llamp_library::Library;
 
+use crate::eq_window::EqWindow;
+
 use llamp_audio::output::OutputEvents;
 
 /// Left and right seek by this many seconds of the file's sample rate.
@@ -35,6 +37,7 @@ pub struct PlaybackSnapshot {
     pub vis_mode: u8,
     pub always_on_top: u8,
     pub double_size: u8,
+    pub supports_eq: u8,
     pub volume_ppm: u16,
     pub balance_ppm: u16,
     pub title_len: u16,
@@ -55,6 +58,7 @@ impl Default for PlaybackSnapshot {
             vis_mode: 0,
             always_on_top: 0,
             double_size: 0,
+            supports_eq: 1,
             volume_ppm: 0,
             balance_ppm: 500,
             title_len: 0,
@@ -73,6 +77,8 @@ pub struct Session {
     library: Mutex<Option<Library>>,
     /// Feeder and stream. The callback does not take this lock.
     playback: Mutex<Option<LoopPlayback>>,
+    /// Window and preset state. The callback does not take this lock.
+    eq: Mutex<EqWindow>,
 }
 
 impl Session {
@@ -85,6 +91,19 @@ impl Session {
             snap: Seqlock::new(PlaybackSnapshot::default()),
             library: Mutex::new(None),
             playback: Mutex::new(None),
+            eq: Mutex::new(EqWindow::new()),
+        }
+    }
+
+    pub fn with_eq<T>(&self, f: impl FnOnce(&mut EqWindow) -> T) -> Result<T, String> {
+        let mut eq = self.eq.lock().map_err(|err| err.to_string())?;
+        Ok(f(&mut eq))
+    }
+
+    pub fn set_supports_eq(&self, on: bool) {
+        self.snap.write(|snap| snap.supports_eq = u8::from(on));
+        if let Ok(mut eq) = self.eq.lock() {
+            eq.set_supports(on);
         }
     }
 
@@ -156,6 +175,9 @@ impl Session {
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
         self.configure(decoded.sample_rate, frames, decoded.source_channels, title.as_bytes());
+        if let Ok(mut eq) = self.eq.lock() {
+            eq.note_track(&title);
+        }
         Ok(())
     }
 

@@ -5,7 +5,8 @@ import llamp_ffi
 public final class MainWindow: NSWindow {
     let chrome: ChromeView
     private var shaded = false
-    private var skinScale = 1
+    var skinScale = 1
+    public var onOpenEqualizer: (() -> Void)?
     private var marqueeSkip: UInt32 = 0
     private var lastPull = ""
     private var displayTimer: Timer?
@@ -28,6 +29,12 @@ public final class MainWindow: NSWindow {
         isMovableByWindowBackground = false
         chrome.onControl = { [weak self] control in
             self?.apply(control)
+        }
+        chrome.onBackgroundDrag = { event in
+            WindowDock.shared.track(which: 0, event: event)
+        }
+        if let screen = NSScreen.main {
+            setFrameOrigin(NSPoint(x: screen.visibleFrame.midX - frame.width / 2, y: screen.visibleFrame.midY))
         }
         displayTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -67,6 +74,7 @@ public final class MainWindow: NSWindow {
     private func apply(_ control: HitControl) {
         let snap = llamp_playback_poll()
         level = snap.always_on_top == 0 ? .normal : .floating
+        WindowDock.shared.refreshLevel(mainOnTop: snap.always_on_top != 0)
         let nextScale = snap.double_size == 0 ? 1 : 2
         if nextScale != skinScale {
             skinScale = nextScale
@@ -77,11 +85,31 @@ public final class MainWindow: NSWindow {
             toggleShade()
         case "Close":
             close()
+        case "Equalizer":
+            onOpenEqualizer?()
         case "Minimize":
             miniaturize(nil)
         default:
             break
         }
+    }
+
+    public override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        var frame = frameRect
+        let size = llamp_main_size()
+        let height = shaded ? llamp_shade_height() : size.height
+        frame.size = NSSize(
+            width: CGFloat(size.width * UInt32(skinScale)),
+            height: CGFloat(height * UInt32(skinScale))
+        )
+        let vis = (screen ?? self.screen ?? NSScreen.main)?.visibleFrame
+        if let vis {
+            if frame.maxX > vis.maxX { frame.origin.x = vis.maxX - frame.width }
+            if frame.minX < vis.minX { frame.origin.x = vis.minX }
+            if frame.maxY > vis.maxY { frame.origin.y = vis.maxY - frame.height }
+            if frame.minY < vis.minY { frame.origin.y = vis.minY }
+        }
+        return frame
     }
 
     private func resizeToSkin() {

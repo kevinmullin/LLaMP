@@ -11,6 +11,7 @@ final class ChromeView: NSView, CapturePainting {
     private var backingScale = 1
     private var sliding: HitControl?
     var onControl: ((HitControl) -> Void)?
+    var onBackgroundDrag: ((NSEvent) -> Void)?
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -83,7 +84,11 @@ final class ChromeView: NSView, CapturePainting {
             press(control)
             return
         }
-        window?.performDrag(with: event)
+        if let onBackgroundDrag {
+            onBackgroundDrag(event)
+        } else {
+            window?.performDrag(with: event)
+        }
     }
 
     override func mouseDragged(with event: NSEvent) {

@@ -9,6 +9,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, StreamConfig};
 use rtrb::Consumer;
 
+use crate::graph::Stage;
 use crate::output::{DeviceInfo, Output, OutputError, OutputEvents, Playback, StreamRequest};
 
 pub struct CpalOutput {
@@ -81,23 +82,33 @@ impl Output for CpalOutput {
         config.channels = request.channels.max(1);
         let rate = config.sample_rate;
         events.sample_rate.store(rate, Ordering::Relaxed);
-        let events_cb = Arc::clone(&events);
-        let err_events = Arc::clone(&events);
+        let channels = config.channels;
         let stream = match format {
-            SampleFormat::F32 => device
-                .build_output_stream(
-                    config,
-                    move |data: &mut [f32], _| fill_float(data, &mut ring, &events_cb),
-                    move |err| note_error(&err_events, err.kind()),
-                    None,
-                )
-                .map_err(|err| OutputError(err.to_string()))?,
+            SampleFormat::F32 => {
+                let events_cb = Arc::clone(&events);
+                let err_events = Arc::clone(&events);
+                let mut stage = Stage::for_playback(rate);
+                device
+                    .build_output_stream(
+                        config,
+                        move |data: &mut [f32], _| fill_float(data, &mut ring, &events_cb, &mut stage, channels),
+                        move |err| note_error(&err_events, err.kind()),
+                        None,
+                    )
+                    .map_err(|err| OutputError(err.to_string()))?
+            }
             SampleFormat::I16 => {
+                let events_cb = Arc::clone(&events);
+                let err_events = Arc::clone(&events);
+                let mut stage = Stage::for_playback(rate);
+                let mut scratch = vec![0.0f32; 8192];
                 let mut rng = 0x1234_5678u32;
                 device
                     .build_output_stream(
                         config,
-                        move |data: &mut [i16], _| fill_i16(data, &mut ring, &events_cb, &mut rng),
+                        move |data: &mut [i16], _| {
+                            fill_i16(data, &mut ring, &events_cb, &mut rng, &mut stage, &mut scratch, channels)
+                        },
                         move |err| note_error(&err_events, err.kind()),
                         None,
                     )
@@ -110,9 +121,7 @@ impl Output for CpalOutput {
     }
 }
 
-fn fill_float(data: &mut [f32], ring: &mut Consumer<f32>, events: &OutputEvents) {
-    let channels = if data.is_empty() { 1 } else { 1.max(data.len() / data.len()) };
-    let _ = channels;
+fn fill_float(data: &mut [f32], ring: &mut Consumer<f32>, events: &OutputEvents, stage: &mut Stage, channels: u16) {
     let mut missed = false;
     let mut consumed = 0u64;
     for sample in data.iter_mut() {
@@ -127,6 +136,9 @@ fn fill_float(data: &mut [f32], ring: &mut Consumer<f32>, events: &OutputEvents)
             }
         }
     }
+    if channels == 2 && data.len() % 2 == 0 {
+        stage.process(data);
+    }
     if consumed > 0 {
         events.played_frames.fetch_add(consumed / 2, Ordering::Relaxed);
     }
@@ -139,21 +151,39 @@ fn fill_float(data: &mut [f32], ring: &mut Consumer<f32>, events: &OutputEvents)
     }
 }
 
-fn fill_i16(data: &mut [i16], ring: &mut Consumer<f32>, events: &OutputEvents, rng: &mut u32) {
+fn fill_i16(
+    data: &mut [i16],
+    ring: &mut Consumer<f32>,
+    events: &OutputEvents,
+    rng: &mut u32,
+    stage: &mut Stage,
+    scratch: &mut [f32],
+    channels: u16,
+) {
     let mut missed = false;
     let mut consumed = 0u64;
-    for sample in data.iter_mut() {
-        let value = match ring.pop() {
-            Ok(value) => {
-                consumed += 1;
-                value
+    let mut offset = 0;
+    while offset < data.len() {
+        let n = (data.len() - offset).min(scratch.len());
+        for sample in &mut scratch[..n] {
+            match ring.pop() {
+                Ok(value) => {
+                    *sample = value;
+                    consumed += 1;
+                }
+                Err(_) => {
+                    *sample = 0.0;
+                    missed = true;
+                }
             }
-            Err(_) => {
-                missed = true;
-                0.0
-            }
-        };
-        *sample = tpdf_i16(value, rng);
+        }
+        if channels == 2 && n % 2 == 0 {
+            stage.process(&mut scratch[..n]);
+        }
+        for (dst, sample) in data[offset..offset + n].iter_mut().zip(scratch[..n].iter()) {
+            *dst = tpdf_i16(*sample, rng);
+        }
+        offset += n;
     }
     if consumed > 0 {
         events.played_frames.fetch_add(consumed / 2, Ordering::Relaxed);

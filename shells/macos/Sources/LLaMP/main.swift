@@ -12,11 +12,36 @@ app.run()
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let window = MainWindow()
+    let equalizer = EqWindow()
     private let started = ContinuousClock.now
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        EqStore.install()
+        WindowDock.shared.attach(main: window, equalizer: equalizer)
+        window.onOpenEqualizer = { WindowDock.shared.showEqualizer() }
+        if let skin = argumentValue("--skin"), let data = try? Data(contentsOf: URL(fileURLWithPath: skin)), !data.isEmpty {
+            window.loadSkin(data)
+        }
+        if let screen = NSScreen.main {
+            var frame = window.frame
+            frame.origin.x = screen.visibleFrame.midX - frame.width / 2
+            frame.origin.y = screen.visibleFrame.midY
+            window.setFrameOrigin(frame.origin)
+        }
         window.makeKeyAndOrderFront(nil)
         window.contentView?.display()
+        if CommandLine.arguments.contains("--show-eq") {
+            WindowDock.shared.showEqualizer()
+        }
+        if let track = argumentValue("--play") {
+            let refs = argumentValue("--refs") ?? FileManager.default.temporaryDirectory.path
+            _ = track.withCString { trackPtr in
+                refs.withCString { refsPtr in
+                    llamp_budget_prepare(trackPtr, refsPtr)
+                }
+            }
+        }
+        NSApp.activate(ignoringOtherApps: true)
         if CommandLine.arguments.contains("--paint-and-exit") {
             let elapsed = started.duration(to: .now)
             let ms = Double(elapsed.components.seconds) * 1000 + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000
@@ -57,6 +82,14 @@ private struct BudgetScene {
     let wsz: Data
     let track: String
     let refs: String
+}
+
+private func argumentValue(_ flag: String) -> String? {
+    let args = CommandLine.arguments
+    guard let index = args.firstIndex(of: flag), args.count > index + 1 else {
+        return nil
+    }
+    return args[index + 1]
 }
 
 private func budgetArguments() -> BudgetScene? {

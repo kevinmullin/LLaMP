@@ -123,8 +123,31 @@ fn dispatch() -> Result<(), String> {
             decode_to_wav(Path::new(&input), Path::new(&output), pcm16)
         }
         Some("play") => {
-            let input = args.next().ok_or("usage: llamp play <path>")?;
-            play(Path::new(&input))
+            let input = args.next().ok_or("usage: llamp play <path> [--eq-sweep | --eq-band N --eq-db D]")?;
+            let mut band = None;
+            let mut db = 0.0f32;
+            let mut sweep = false;
+            while let Some(flag) = args.next() {
+                match flag.as_str() {
+                    "--eq-sweep" => sweep = true,
+                    "--eq-band" => {
+                        let raw = args.next().ok_or("usage: llamp play <path> [--eq-sweep | --eq-band N --eq-db D]")?;
+                        band = Some(raw.parse::<usize>().map_err(|_| format!("band {raw}"))?);
+                    }
+                    "--eq-db" => {
+                        let raw = args.next().ok_or("usage: llamp play <path> [--eq-sweep | --eq-band N --eq-db D]")?;
+                        db = raw.parse::<f32>().map_err(|_| format!("db {raw}"))?;
+                    }
+                    other => return Err(format!("unknown flag {other}")),
+                }
+            }
+            if sweep {
+                crate::set_eq_enabled(true);
+            } else if let Some(band) = band {
+                crate::set_eq_enabled(true);
+                crate::drag_band(band, db);
+            }
+            play_path(Path::new(&input), sweep)
         }
         Some(other) => Err(format!("unknown command {other}")),
         None => Err("usage: llamp decode <path> <out.wav> [--pcm16] | llamp play <path>".into()),
@@ -138,6 +161,10 @@ pub fn decode_to_wav(input: &Path, output: &Path, pcm16: bool) -> Result<(), Str
 }
 
 pub fn play(input: &Path) -> Result<(), String> {
+    play_path(input, false)
+}
+
+fn play_path(input: &Path, sweep: bool) -> Result<(), String> {
     let decoded = decode::decode_path(input).map_err(|err| err.to_string())?;
     let mut backend = CpalOutput::new();
     let events = OutputEvents::new();
@@ -148,7 +175,16 @@ pub fn play(input: &Path) -> Result<(), String> {
     let request = StreamRequest { device_id: None, sample_rate: host_rate, channels: 2 };
     let mut stream = backend.open(request, consumer, events.clone()).map_err(|err| err.to_string())?;
     let mut offset = 0;
+    let mut current_band = 10usize;
+    let frames = stereo.len() / 2;
     while offset < stereo.len() {
+        if sweep {
+            let band = crate::sweep_band_at(offset / 2, frames);
+            if band != current_band {
+                crate::set_eq_sweep_band(band);
+                current_band = band;
+            }
+        }
         if events.take_loss().is_some() {
             stream.stop();
             let new_rate = open_rate()?;

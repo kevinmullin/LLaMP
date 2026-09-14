@@ -356,6 +356,7 @@ pub struct LlampPlayback {
     pub vis_mode: u8,
     pub always_on_top: u8,
     pub double_size: u8,
+    pub supports_eq: u8,
     pub volume_ppm: u16,
     pub balance_ppm: u16,
     pub title_len: u16,
@@ -436,6 +437,8 @@ fn image_from(rgba: Vec<u8>, width: u32, height: u32) -> LlampImage {
 fn polygons(skin: &llamp_skin::Skin, mode: u32) -> &[llamp_skin::Polygon] {
     match mode {
         1 => &skin.regions.window_shade,
+        2 => &skin.regions.equalizer,
+        3 => &skin.regions.equalizer_ws,
         _ => &skin.regions.normal,
     }
 }
@@ -453,11 +456,299 @@ fn snapshot_to_c(snap: PlaybackSnapshot) -> LlampPlayback {
         vis_mode: snap.vis_mode,
         always_on_top: snap.always_on_top,
         double_size: snap.double_size,
+        supports_eq: snap.supports_eq,
         volume_ppm: snap.volume_ppm,
         balance_ppm: snap.balance_ppm,
         title_len: snap.title_len,
         title: snap.title,
     }
+}
+
+#[repr(C)]
+pub struct LlampFrame {
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
+}
+
+#[repr(C)]
+pub struct LlampDock {
+    pub main_x: i32,
+    pub main_y: i32,
+    pub main_w: i32,
+    pub main_h: i32,
+    pub eq_x: i32,
+    pub eq_y: i32,
+    pub eq_w: i32,
+    pub eq_h: i32,
+    pub docked: u8,
+    pub group_on_top: u8,
+}
+
+/// Equalizer size in skin pixels. Same locked rectangle as the main window.
+#[no_mangle]
+pub extern "C" fn llamp_eq_size() -> LlampSize {
+    LlampSize { width: llamp_skin::EQ_WIDTH, height: llamp_skin::EQ_HEIGHT }
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_control_count() -> u32 {
+    llamp_skin::eq_controls().len() as u32
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_control_at(index: u32) -> LlampControl {
+    let controls = llamp_skin::eq_controls();
+    let Some(control) = controls.get(index as usize) else {
+        return LlampControl { id: 0, x: 0, y: 0, w: 0, h: 0, label: std::ptr::null() };
+    };
+    LlampControl {
+        id: control.id,
+        x: control.rect.x,
+        y: control.rect.y,
+        w: control.rect.w,
+        h: control.rect.h,
+        label: eq_label(control.label),
+    }
+}
+
+/// Magnitude at a band center after the slew settles. Bound to the window targets.
+#[no_mangle]
+pub extern "C" fn llamp_eq_center_db(band: u32) -> f32 {
+    if band >= 10 {
+        return f32::NAN;
+    }
+    let mut eq = llamp_audio::eq::Eq::new(48_000);
+    eq.bind_ui_sliders();
+    llamp_audio::set_eq_enabled(true);
+    eq.impulse_center_db(band as usize, 8192)
+}
+
+/// Slider drag. `id` 6 is preamp, 7..16 are bands. `millidb` is thousandths of a dB.
+/// Writes the atomic target. Does not redesign coefficients.
+#[no_mangle]
+pub extern "C" fn llamp_eq_drag(id: u32, millidb: i32) {
+    let _ = session().with_eq(|eq| {
+        if id == 6 {
+            eq.drag_slider(true, 0, millidb);
+        } else if (7..17).contains(&id) {
+            eq.drag_slider(false, (id - 7) as usize, millidb);
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_press(id: u32) {
+    let _ = session().with_eq(|eq| match id {
+        1 => eq.toggle_on(),
+        2 => eq.toggle_auto(),
+        _ => {}
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_save_preset(name: *const c_char) -> i32 {
+    let Some(name) = cstr_path(name) else { return LLAMP_ERR_INVALID };
+    match session().with_eq(|eq| eq.save_preset(&name)) {
+        Ok(Ok(())) => LLAMP_OK,
+        _ => LLAMP_ERR_INVALID,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_load_preset(name: *const c_char) -> i32 {
+    let Some(name) = cstr_path(name) else { return LLAMP_ERR_INVALID };
+    match session().with_eq(|eq| eq.load_preset(&name)) {
+        Ok(Ok(())) => LLAMP_OK,
+        _ => LLAMP_ERR_INVALID,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_save_autoload() -> i32 {
+    match session().with_eq(|eq| eq.save_autoload()) {
+        Ok(Ok(())) => LLAMP_OK,
+        _ => LLAMP_ERR_INVALID,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_save_default() -> i32 {
+    match session().with_eq(|eq| eq.save_default()) {
+        Ok(Ok(())) => LLAMP_OK,
+        _ => LLAMP_ERR_INVALID,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_preset_count() -> u32 {
+    session().with_eq(|eq| eq.preset_names().len() as u32).unwrap_or(0)
+}
+
+/// Writes a NUL-terminated name into `out`. Returns `LLAMP_ERR_INVALID` if it does not fit.
+#[no_mangle]
+pub extern "C" fn llamp_eq_preset_name(index: u32, out: *mut c_char, len: usize) -> i32 {
+    if out.is_null() || len == 0 {
+        return LLAMP_ERR_INVALID;
+    }
+    let name = session()
+        .with_eq(|eq| eq.preset_names().get(index as usize).cloned())
+        .ok()
+        .flatten();
+    let Some(name) = name else { return LLAMP_ERR_INVALID };
+    let bytes = name.as_bytes();
+    if bytes.len() + 1 > len {
+        return LLAMP_ERR_INVALID;
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), out.cast(), bytes.len());
+        *out.add(bytes.len()) = 0;
+    }
+    LLAMP_OK
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_set_store(path: *const c_char) -> i32 {
+    let Some(path) = cstr_path(path) else { return LLAMP_ERR_INVALID };
+    match session().with_eq(|eq| eq.set_store(Path::new(&path))) {
+        Ok(Ok(())) => LLAMP_OK,
+        _ => LLAMP_ERR_INVALID,
+    }
+}
+
+/// Static string. The caller does not free it.
+#[no_mangle]
+pub extern "C" fn llamp_eq_caption() -> *const c_char {
+    let applies = session().poll().supports_eq != 0;
+    if applies {
+        static ON: &[u8] = b"Equalizer\0";
+        ON.as_ptr().cast()
+    } else {
+        static OFF: &[u8] = b"Equalizer does not apply \xe2\x80\x94 playback is remote\0";
+        OFF.as_ptr().cast()
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_blit() -> LlampImage {
+    let snap = session().poll();
+    let (on, auto_on) = session()
+        .with_eq(|eq| (eq.on(), eq.auto()))
+        .unwrap_or((false, false));
+    let mut curve = vec![0.0f32; 64];
+    if snap.supports_eq != 0 && on && snap.sample_rate > 0 {
+        llamp_audio::eq::curve_db(snap.sample_rate, &mut curve);
+    }
+    let vis = skin_slot()
+        .lock()
+        .ok()
+        .and_then(|slot| slot.current().map(|skin| skin.vis_colors))
+        .unwrap_or_else(llamp_skin::default_vis_colors);
+    let paint = llamp_skin::EqPaint {
+        on,
+        auto_on,
+        applies: snap.supports_eq != 0,
+        preamp_db: llamp_audio::preamp_target_db(),
+        bands: std::array::from_fn(llamp_audio::band_target_db),
+        curve_db: curve,
+        vis,
+    };
+    image_from(llamp_skin::blit_eq(&paint), llamp_skin::EQ_WIDTH, llamp_skin::EQ_HEIGHT)
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_set_frames(main: LlampFrame, eq: LlampFrame) {
+    let _ = session().with_eq(|window| {
+        window.set_frames(frame_from(main), frame_from(eq));
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_begin_drag() {
+    let _ = session().with_eq(|eq| eq.begin_drag());
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_drag_window(which: u32, dx: i32, dy: i32) -> LlampDock {
+    let Some(which) = llamp_core::Which::from_u32(which) else {
+        return LlampDock { main_x: 0, main_y: 0, main_w: 0, main_h: 0, eq_x: 0, eq_y: 0, eq_w: 0, eq_h: 0, docked: 0, group_on_top: 0 };
+    };
+    session()
+        .with_eq(|eq| {
+            let moved = eq.drag(which, dx, dy);
+            dock_from(moved, eq.window_on_top(which, session_on_top()))
+        })
+        .unwrap_or(LlampDock { main_x: 0, main_y: 0, main_w: 0, main_h: 0, eq_x: 0, eq_y: 0, eq_w: 0, eq_h: 0, docked: 0, group_on_top: 0 })
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_eq_end_drag() -> LlampDock {
+    session()
+        .with_eq(|eq| {
+            let moved = eq.end_drag();
+            dock_from(moved, eq.window_on_top(llamp_core::Which::Eq, session_on_top()))
+        })
+        .unwrap_or(LlampDock { main_x: 0, main_y: 0, main_w: 0, main_h: 0, eq_x: 0, eq_y: 0, eq_w: 0, eq_h: 0, docked: 0, group_on_top: 0 })
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_text_color() -> u32 {
+    let rgb = skin_slot()
+        .lock()
+        .ok()
+        .and_then(|slot| slot.current().map(|skin| skin.playlist_colors.normal))
+        .unwrap_or_else(|| llamp_skin::default_playlist_colors().normal);
+    u32::from(rgb.r) << 16 | u32::from(rgb.g) << 8 | u32::from(rgb.b)
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_text_bg() -> u32 {
+    let rgb = skin_slot()
+        .lock()
+        .ok()
+        .and_then(|slot| slot.current().map(|skin| skin.playlist_colors.normal_bg))
+        .unwrap_or_else(|| llamp_skin::default_playlist_colors().normal_bg);
+    u32::from(rgb.r) << 16 | u32::from(rgb.g) << 8 | u32::from(rgb.b)
+}
+
+fn session_on_top() -> bool {
+    session().poll().always_on_top != 0
+}
+
+fn frame_from(frame: LlampFrame) -> llamp_core::Frame {
+    llamp_core::Frame { x: frame.x, y: frame.y, w: frame.w, h: frame.h }
+}
+
+fn dock_from(dock: llamp_core::DockMove, main_on_top: bool) -> LlampDock {
+    let _ = main_on_top;
+    LlampDock {
+        main_x: dock.main.x,
+        main_y: dock.main.y,
+        main_w: dock.main.w,
+        main_h: dock.main.h,
+        eq_x: dock.eq.x,
+        eq_y: dock.eq.y,
+        eq_w: dock.eq.w,
+        eq_h: dock.eq.h,
+        docked: u8::from(dock.docked),
+        group_on_top: u8::from(main_on_top),
+    }
+}
+
+fn eq_label(label: &str) -> *const c_char {
+    static LABELS: OnceLock<Vec<CString>> = OnceLock::new();
+    let labels = LABELS.get_or_init(|| {
+        llamp_skin::eq_controls()
+            .into_iter()
+            .map(|control| CString::new(control.label).expect("eq label has no NUL"))
+            .collect()
+    });
+    labels
+        .iter()
+        .find(|item| item.as_bytes() == label.as_bytes())
+        .map(|item| item.as_ptr())
+        .unwrap_or(std::ptr::null())
 }
 
 fn cstr_owned(title: *const c_char) -> Vec<u8> {
