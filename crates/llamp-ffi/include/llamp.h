@@ -80,6 +80,7 @@ typedef struct LlampPlayback {
   uint8_t always_on_top;
   uint8_t double_size;
   uint8_t supports_eq;
+  uint8_t produces_pcm;
   uint16_t volume_ppm;
   uint16_t balance_ppm;
   uint16_t title_len;
@@ -289,6 +290,22 @@ struct LlampDock llamp_eq_end_drag(void);
 uint32_t llamp_text_color(void);
 
 uint32_t llamp_text_bg(void);
+
+uint32_t llamp_plugin_count(void);
+
+/**
+ * Writes a NUL-terminated plugin id.
+ */
+int32_t llamp_plugin_id(uint32_t index, char *out, size_t len);
+
+int32_t llamp_plugin_enable(const char *id);
+
+int32_t llamp_plugin_disable(const char *id);
+
+/**
+ * Writes the recorded refusal reason. Empty if the plugin was not refused.
+ */
+int32_t llamp_plugin_refused_reason(const char *id, char *out, size_t len);
 
 /**
  * Opens the library database. Music stays at granted paths.

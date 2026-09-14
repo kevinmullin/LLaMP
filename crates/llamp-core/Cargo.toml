@@ -9,3 +9,5 @@ rust-version.workspace = true
 [dependencies]
 llamp-audio = { path = "../llamp-audio" }
 llamp-library = { path = "../llamp-library" }
+llamp-plugin-api = { path = "../llamp-plugin-api" }
+llamp-source-local = { path = "../../plugins/llamp-source-local" }

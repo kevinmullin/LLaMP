@@ -5,3 +5,12 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 rust-version.workspace = true
+
+[dependencies]
+llamp-plugin-api = { path = "../llamp-plugin-api" }
+wasmtime = "=48.0.2"
+wasmtime-wasi = "=48.0.2"
+
+[dev-dependencies]
+llamp-audio = { path = "../llamp-audio" }
+llamp-source-local = { path = "../../plugins/llamp-source-local" }

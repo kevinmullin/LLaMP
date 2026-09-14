@@ -105,6 +105,17 @@ Not a phase-5 exit. Intra-row Mixed is superseded: any missing glyph in the visi
 
 `swift test --package-path shells/macos --filter 'PlaylistWindowTests|BrowserWindowTests|EqWindowTests'`: 9 tests, 0 failures.
 
+## 6 — plugin host
+
+Done locally on 2026-09-14. `cargo test --workspace --locked` passed after this work.
+
+- Manifest schema is `llamp-plugin.json` (`llamp-plugin-api`). Unknown fields are ignored. Missing or unknown `kind` is refused. A user manifest that sets `audio_callback` or `gpu_surface` is refused. Host ABI is `1.0.0`. A range that does not include the host is refused with a recorded reason; the process does not crash. Registry enable/disable is `llamp-plugin-host`.
+- MediaSource capability flags live on `SourceFlags`. Tier A is `produces_pcm`. The local first-party provider returns `SourceFlags::local_file()`. `Session::apply_source_flags` writes `supports_eq` and `produces_pcm` onto the snapshot the compositor already reads. There is no second parallel flag. `llamp_eq_blit` still draws the Tier B caption and the flat curve from that snapshot. The shell does not branch on a provider name.
+- wasmtime **48.0.2** is pinned in `crates/llamp-plugin-host/Cargo.toml`. WIT package `llamp:plugin@1.0.0` is `crates/llamp-plugin-host/wit/plugin.wit`. Custom section name `llamp-plugin.json`. Epoch deadline 1; the host increments after one second. No ambient network or filesystem. Guest TCP `connect` is denied by `socket_addr_check` (the fixture resolves an IP and connects; the listener never accepts). An undeclared path is denied at the WASI preopen. Fixtures are compiled at test time for `wasm32-wasip2`; no `.wasm` is committed. CI installs that target.
+- Browse, search, and resolve go through `MediaSource`. `plugins/llamp-source-local` wraps `llamp-library`. `BrowserList::load_granted` and the FFI library path take the trait. The player does not call `Library` for those three. Workspace members are `crates/*` and `plugins/*`.
+- First-party disable/enable while the callback keeps filling: `crates/llamp-plugin-host/tests/hot_reload.rs`. The phase 1 allocator hook still passes. The DSP slot is a no-op `fn(&mut [f32])` between EQ and the limiter; it is swapped at a buffer boundary, not from the callback. Native dylib hot reload is a dev-build demo. A notarized binary with a hardened runtime does not `dlopen` a rebuilt dylib. 1.0 is disable and enable without an audio drop (`NATIVE_RELOAD_POLICY`).
+- C names pinned by cbindgen 0.29.4: `llamp_plugin_count`, `llamp_plugin_id`, `llamp_plugin_enable`, `llamp_plugin_disable`, `llamp_plugin_refused_reason`. `LlampPlayback` also publishes `produces_pcm`.
+
 ## Carry-forward debt, pre-phase-6
 
 Closed before phase 6. Green run on `34747c1`: https://github.com/kevinmullin/LLaMP/actions/runs/34868736118.

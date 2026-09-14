@@ -23,11 +23,14 @@ impl BrowserList {
         Self { rows: Vec::new() }
     }
 
-    pub fn load_granted(&mut self, lib: &llamp_library::Library) -> Result<(), String> {
-        self.rows = lib
-            .granted_paths()?
+    pub fn load_granted(
+        &mut self,
+        source: &dyn llamp_plugin_api::MediaSource,
+    ) -> Result<(), String> {
+        self.rows = source
+            .browse()?
             .into_iter()
-            .map(|path| path.to_string_lossy().into_owned())
+            .map(|item| item.label)
             .collect();
         Ok(())
     }

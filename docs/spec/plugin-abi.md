@@ -73,10 +73,12 @@ Native first-party plugins have a manifest too, so the host treats them uniforml
 
 ## Sandbox
 
-wasmtime, component model. Phase 6 pins the version and writes that pin into this spec, plus the WIT package. Until that pin, this spec is the requirements list:
+wasmtime **48.0.2**, component model. WIT package `llamp:plugin@1.0.0` in `crates/llamp-plugin-host/wit/plugin.wit`. The reviewable manifest is `llamp-plugin.json` next to the component, or the custom section of the same name.
+
+C names pinned by cbindgen: `llamp_plugin_count`, `llamp_plugin_id`, `llamp_plugin_enable`, `llamp_plugin_disable`, `llamp_plugin_refused_reason`.
 
 - No ambient filesystem, no ambient network, no clocks except a host function that returns the playback position, no random except a host function.
-- Memory limit and a fuel or epoch budget so a tight loop dies. The numbers are chosen in phase 6 so a normal lyrics fetch succeeds and a deliberate infinite loop dies within one second.
+- Epoch interruption: deadline 1, host increments the epoch after one second. A lyrics fetch finishes; a tight loop dies within that second.
 - A plugin trap unloads that plugin. It does not take down the host process. If wasmtime cannot promise that, we do not ship user plugins in 1.0. That is a phase 6 exit, not a hope.
 
 Extism is not a second runtime. See [ADR 004](../adr/004-plugin-runtime.md).

@@ -1,0 +1,11 @@
+{
+  "id": "llamp.source.local",
+  "name": "Local files",
+  "version": "0.1.0",
+  "abi": "^1.0.0",
+  "kind": "MediaSource",
+  "capabilities": {
+    "network_hosts": [],
+    "filesystem": ["user-selected"]
+  }
+}

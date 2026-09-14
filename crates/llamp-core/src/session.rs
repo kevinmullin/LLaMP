@@ -9,7 +9,8 @@ use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use llamp_audio::cli::LoopPlayback;
-use llamp_library::Library;
+use llamp_plugin_api::{MediaSource, SourceFlags};
+use llamp_source_local::LocalSource;
 
 use crate::eq_window::EqWindow;
 
@@ -38,6 +39,7 @@ pub struct PlaybackSnapshot {
     pub always_on_top: u8,
     pub double_size: u8,
     pub supports_eq: u8,
+    pub produces_pcm: u8,
     pub volume_ppm: u16,
     pub balance_ppm: u16,
     pub title_len: u16,
@@ -59,6 +61,7 @@ impl Default for PlaybackSnapshot {
             always_on_top: 0,
             double_size: 0,
             supports_eq: 1,
+            produces_pcm: 1,
             volume_ppm: 0,
             balance_ppm: 500,
             title_len: 0,
@@ -73,8 +76,8 @@ pub struct Session {
     mark: AtomicU64,
     playing: AtomicU8,
     snap: Seqlock<PlaybackSnapshot>,
-    /// Open library. Count is `SELECT COUNT(*) FROM tracks WHERE storage = 'referenced'`.
-    library: Mutex<Option<Library>>,
+    /// First-party or user MediaSource. The player talks to this trait.
+    source: Mutex<Option<Arc<dyn MediaSource>>>,
     /// Feeder and stream. The callback does not take this lock.
     playback: Mutex<Option<LoopPlayback>>,
     /// Window and preset state. The callback does not take this lock.
@@ -89,7 +92,7 @@ impl Session {
             mark: AtomicU64::new(0),
             playing: AtomicU8::new(TRANSPORT_STOPPED),
             snap: Seqlock::new(PlaybackSnapshot::default()),
-            library: Mutex::new(None),
+            source: Mutex::new(None),
             playback: Mutex::new(None),
             eq: Mutex::new(EqWindow::new()),
         }
@@ -100,10 +103,14 @@ impl Session {
         Ok(f(&mut eq))
     }
 
-    pub fn set_supports_eq(&self, on: bool) {
-        self.snap.write(|snap| snap.supports_eq = u8::from(on));
+    /// Capability flags come from the provider. There is no second parallel flag.
+    pub fn apply_source_flags(&self, flags: SourceFlags) {
+        self.snap.write(|snap| {
+            snap.supports_eq = u8::from(flags.supports_eq);
+            snap.produces_pcm = u8::from(flags.produces_pcm);
+        });
         if let Ok(mut eq) = self.eq.lock() {
-            eq.set_supports(on);
+            eq.set_supports(flags.supports_eq);
         }
     }
 
@@ -121,7 +128,10 @@ impl Session {
 
     pub fn configure(&self, sample_rate: u32, frames: u64, channels: u16, title: &[u8]) {
         self.base.store(0, Ordering::Relaxed);
-        self.mark.store(self.events.played_frames.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.mark.store(
+            self.events.played_frames.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
         self.playing.store(TRANSPORT_STOPPED, Ordering::Relaxed);
         self.snap.write(|snap| {
             snap.duration_frames = frames;
@@ -137,18 +147,21 @@ impl Session {
     /// The database stays open at `dir/../library.sqlite` so RSS includes those rows.
     pub fn retain_references(&self, dir: &Path) -> Result<usize, String> {
         let parent = dir.parent().ok_or("referenced directory has no parent")?;
-        let library = Library::open(&parent.join("library.sqlite"))?;
-        library.insert_referenced_dir(dir)?;
-        let count = library.count_referenced()?;
-        *self.library.lock().map_err(|err| err.to_string())? = Some(library);
+        let source = LocalSource::open(&parent.join("library.sqlite"))?;
+        let count = source.insert_referenced_dir(dir)?;
+        self.apply_source_flags(SourceFlags::local_file());
+        *self.source.lock().map_err(|err| err.to_string())? = Some(Arc::new(source));
         Ok(count)
     }
 
     pub fn reference_count(&self) -> usize {
-        self.library
+        self.source
             .lock()
             .ok()
-            .and_then(|slot| slot.as_ref().and_then(|lib| lib.count_referenced().ok()))
+            .and_then(|slot| {
+                slot.as_ref()
+                    .and_then(|source| source.browse().ok().map(|rows| rows.len()))
+            })
             .unwrap_or(0)
     }
 
@@ -157,7 +170,10 @@ impl Session {
     pub fn start_loop(&self, path: &Path) -> Result<(), String> {
         self.load_path(path)?;
         let handle = llamp_audio::cli::play_loop(path, self.events())?;
-        self.mark.store(self.events.played_frames.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.mark.store(
+            self.events.played_frames.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
         self.playing.store(TRANSPORT_PLAYING, Ordering::Relaxed);
         self.snap.write(|snap| {
             snap.transport = TRANSPORT_PLAYING;
@@ -174,7 +190,12 @@ impl Session {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
-        self.configure(decoded.sample_rate, frames, decoded.source_channels, title.as_bytes());
+        self.configure(
+            decoded.sample_rate,
+            frames,
+            decoded.source_channels,
+            title.as_bytes(),
+        );
         if let Ok(mut eq) = self.eq.lock() {
             eq.note_track(&title);
         }
@@ -193,7 +214,10 @@ impl Session {
     pub fn stop(&self) {
         self.playing.store(TRANSPORT_STOPPED, Ordering::Relaxed);
         self.base.store(0, Ordering::Relaxed);
-        self.mark.store(self.events.played_frames.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.mark.store(
+            self.events.played_frames.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
         self.snap.write(|snap| snap.transport = TRANSPORT_STOPPED);
     }
 
@@ -202,13 +226,18 @@ impl Session {
         let duration = self.snap.read().duration_frames;
         let now = self.position(duration) as i64;
         let next = (now + i64::from(delta)).clamp(0, duration as i64) as u64;
-        self.mark.store(self.events.played_frames.load(Ordering::Relaxed), Ordering::Relaxed);
+        self.mark.store(
+            self.events.played_frames.load(Ordering::Relaxed),
+            Ordering::Relaxed,
+        );
         self.base.store(next, Ordering::Relaxed);
     }
 
     /// Same atomic increment the audio callback performs. Does not lock.
     pub fn note_played(&self, frames: u64) {
-        self.events.played_frames.fetch_add(frames, Ordering::Relaxed);
+        self.events
+            .played_frames
+            .fetch_add(frames, Ordering::Relaxed);
     }
 
     pub fn press(&self, id: u32) {
@@ -232,8 +261,10 @@ impl Session {
             15 => {
                 let duration = self.snap.read().duration_frames;
                 let next = (u64::from(ppm) * duration) / 1000;
-                self.mark
-                    .store(self.events.played_frames.load(Ordering::Relaxed), Ordering::Relaxed);
+                self.mark.store(
+                    self.events.played_frames.load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
                 self.base.store(next, Ordering::Relaxed);
             }
             16 => self.snap.write(|snap| snap.volume_ppm = ppm),
@@ -246,7 +277,10 @@ impl Session {
         let played = self.events.played_frames.load(Ordering::Relaxed);
         let mark = self.mark.load(Ordering::Relaxed);
         let delta = played.saturating_sub(mark);
-        self.base.load(Ordering::Relaxed).saturating_add(delta).min(duration)
+        self.base
+            .load(Ordering::Relaxed)
+            .saturating_add(delta)
+            .min(duration)
     }
 }
 

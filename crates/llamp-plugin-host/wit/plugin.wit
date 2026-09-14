@@ -1,0 +1,43 @@
+package llamp:plugin@1.0.0;
+
+interface lyrics-provider {
+  fetch: func(artist: string, title: string) -> result<string, string>;
+}
+
+interface media-source {
+  browse: func() -> result<list<source-item>, string>;
+  search: func(query: string) -> result<list<source-item>, string>;
+  resolve: func(id: string) -> result<resolved, string>;
+}
+
+record source-item {
+  id: string,
+  label: string,
+}
+
+record source-flags {
+  produces-pcm: bool,
+  supports-seek: bool,
+  supports-volume: bool,
+  supports-balance: bool,
+  supports-eq: bool,
+  supports-gapless: bool,
+  supports-replaygain: bool,
+  duration-known: bool,
+  position-authoritative: bool,
+  requires-network: bool,
+}
+
+record resolved {
+  id: string,
+  label: string,
+  flags: source-flags,
+}
+
+world lyrics {
+  export lyrics-provider;
+}
+
+world source {
+  export media-source;
+}

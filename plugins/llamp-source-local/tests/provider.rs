@@ -1,10 +1,9 @@
-//! The browser lists the granted library. Rows are CoreText, not text.bmp.
+//! The local library is a MediaSource. Browse, search, and resolve go through the trait.
 
 use std::fs;
 use std::path::Path;
 
-use llamp_core::{browser_row_font, BrowserList, RowFont};
-use llamp_plugin_api::MediaSource;
+use llamp_plugin_api::{MediaSource, SourceFlags};
 use llamp_source_local::LocalSource;
 
 fn wav(path: &Path) {
@@ -30,8 +29,8 @@ fn wav(path: &Path) {
 }
 
 #[test]
-fn browser_lists_the_granted_library_in_coretext() {
-    let root = std::env::temp_dir().join(format!("llamp-browser-{}", std::process::id()));
+fn browse_search_resolve_are_the_trait() {
+    let root = std::env::temp_dir().join(format!("llamp-local-src-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     let music = root.join("music");
     fs::create_dir_all(&music).expect("music");
@@ -40,10 +39,14 @@ fn browser_lists_the_granted_library_in_coretext() {
     let source = LocalSource::open(&root.join("library.sqlite")).expect("open");
     source.grant_folder(&music).expect("grant");
     let as_source: &dyn MediaSource = &source;
-    let mut browser = BrowserList::new();
-    browser.load_granted(as_source).expect("load");
-    assert_eq!(browser.rows(), [track.to_string_lossy().as_ref()]);
-    assert_eq!(browser_row_font(&browser.rows()[0]), RowFont::CoreText);
-    assert_eq!(browser_row_font("FIXTURE"), RowFont::CoreText);
+    let browsed = as_source.browse().expect("browse");
+    assert_eq!(browsed.len(), 1);
+    assert_eq!(browsed[0].label, track.to_string_lossy());
+    let hits = as_source.search("song").expect("search");
+    assert_eq!(hits.len(), 1);
+    let resolved = as_source.resolve(&hits[0].id).expect("resolve");
+    assert_eq!(resolved.flags, SourceFlags::local_file());
+    assert!(resolved.flags.produces_pcm);
+    assert!(resolved.flags.supports_eq);
     let _ = fs::remove_dir_all(&root);
 }

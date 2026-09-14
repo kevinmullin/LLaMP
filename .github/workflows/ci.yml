@@ -13,6 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: wasm32-wasip2
       - run: cargo test --workspace --locked
       - name: Fail if the checked-in header drifts from cbindgen 0.29.4
         run: |

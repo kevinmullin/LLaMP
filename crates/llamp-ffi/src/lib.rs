@@ -5,6 +5,9 @@ use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use llamp_core::{PlaybackSnapshot, Session};
+use llamp_plugin_api::{MediaSource, SourceItem};
+use llamp_plugin_host::Registry;
+use llamp_source_local::LocalSource;
 
 const _: () = assert!(llamp_core::TITLE_CAP == 256);
 use llamp_skin::SkinSlot;
@@ -123,10 +126,15 @@ fn label_ptr(id: u32) -> *const c_char {
     let labels = LABELS.get_or_init(|| {
         llamp_skin::controls()
             .iter()
-            .map(|control| CString::new(llamp_skin::control_label(*control)).expect("label has no NUL"))
+            .map(|control| {
+                CString::new(llamp_skin::control_label(*control)).expect("label has no NUL")
+            })
             .collect()
     });
-    labels.get(id as usize).map(|label| label.as_ptr()).unwrap_or(std::ptr::null())
+    labels
+        .get(id as usize)
+        .map(|label| label.as_ptr())
+        .unwrap_or(std::ptr::null())
 }
 
 /// Main window size in skin pixels. The shell does not hard-code this.
@@ -138,7 +146,10 @@ pub struct LlampSize {
 
 #[no_mangle]
 pub extern "C" fn llamp_main_size() -> LlampSize {
-    LlampSize { width: llamp_skin::MAIN_WIDTH, height: llamp_skin::MAIN_HEIGHT }
+    LlampSize {
+        width: llamp_skin::MAIN_WIDTH,
+        height: llamp_skin::MAIN_HEIGHT,
+    }
 }
 
 /// Shade height in skin pixels.
@@ -182,10 +193,22 @@ pub extern "C" fn llamp_skin_load(bytes: *const u8, len: usize) -> i32 {
 pub extern "C" fn llamp_skin_blit_main() -> LlampImage {
     let slot = match skin_slot().lock() {
         Ok(slot) => slot,
-        Err(_) => return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 },
+        Err(_) => {
+            return LlampImage {
+                data: std::ptr::null_mut(),
+                width: 0,
+                height: 0,
+                len: 0,
+            }
+        }
     };
     let Some(skin) = slot.current() else {
-        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+        return LlampImage {
+            data: std::ptr::null_mut(),
+            width: 0,
+            height: 0,
+            len: 0,
+        };
     };
     let rgba = llamp_skin::blit_main(skin);
     image_from(rgba, llamp_skin::MAIN_WIDTH, llamp_skin::MAIN_HEIGHT)
@@ -203,10 +226,22 @@ pub extern "C" fn llamp_skin_blit_display(marquee_skip: u32) -> LlampImage {
     let title = String::from_utf8_lossy(&snap.title[..snap.title_len as usize]).into_owned();
     let slot = match skin_slot().lock() {
         Ok(slot) => slot,
-        Err(_) => return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 },
+        Err(_) => {
+            return LlampImage {
+                data: std::ptr::null_mut(),
+                width: 0,
+                height: 0,
+                len: 0,
+            }
+        }
     };
     let Some(skin) = slot.current() else {
-        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+        return LlampImage {
+            data: std::ptr::null_mut(),
+            width: 0,
+            height: 0,
+            len: 0,
+        };
     };
     let rgba = llamp_skin::blit_display(
         skin,
@@ -316,14 +351,18 @@ pub struct LlampPoint {
 /// `mode` 0 is the normal mask. `mode` 1 is the window-shade mask.
 #[no_mangle]
 pub extern "C" fn llamp_region_polygon_count(mode: u32) -> u32 {
-    let Ok(slot) = skin_slot().lock() else { return 0 };
+    let Ok(slot) = skin_slot().lock() else {
+        return 0;
+    };
     let Some(skin) = slot.current() else { return 0 };
     polygons(skin, mode).len() as u32
 }
 
 #[no_mangle]
 pub extern "C" fn llamp_region_point_count(mode: u32, polygon: u32) -> u32 {
-    let Ok(slot) = skin_slot().lock() else { return 0 };
+    let Ok(slot) = skin_slot().lock() else {
+        return 0;
+    };
     let Some(skin) = slot.current() else { return 0 };
     polygons(skin, mode)
         .get(polygon as usize)
@@ -333,8 +372,12 @@ pub extern "C" fn llamp_region_point_count(mode: u32, polygon: u32) -> u32 {
 
 #[no_mangle]
 pub extern "C" fn llamp_region_point(mode: u32, polygon: u32, index: u32) -> LlampPoint {
-    let Ok(slot) = skin_slot().lock() else { return LlampPoint { x: 0, y: 0 } };
-    let Some(skin) = slot.current() else { return LlampPoint { x: 0, y: 0 } };
+    let Ok(slot) = skin_slot().lock() else {
+        return LlampPoint { x: 0, y: 0 };
+    };
+    let Some(skin) = slot.current() else {
+        return LlampPoint { x: 0, y: 0 };
+    };
     polygons(skin, mode)
         .get(polygon as usize)
         .and_then(|poly| poly.points.get(index as usize).copied())
@@ -360,6 +403,7 @@ pub struct LlampPlayback {
     pub always_on_top: u8,
     pub double_size: u8,
     pub supports_eq: u8,
+    pub produces_pcm: u8,
     pub volume_ppm: u16,
     pub balance_ppm: u16,
     pub title_len: u16,
@@ -374,7 +418,12 @@ pub extern "C" fn llamp_playback_poll() -> LlampPlayback {
 /// Sets duration and title for a session that does not open a device.
 /// `title` may be null. A missing NUL is truncated at `TITLE_CAP`.
 #[no_mangle]
-pub extern "C" fn llamp_session_configure(sample_rate: u32, frames: u64, channels: u16, title: *const c_char) {
+pub extern "C" fn llamp_session_configure(
+    sample_rate: u32,
+    frames: u64,
+    channels: u16,
+    title: *const c_char,
+) {
     let owned = cstr_owned(title);
     session().configure(sample_rate, frames, channels, &owned);
 }
@@ -428,13 +477,22 @@ fn cstr_path(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
     }
-    Some(unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned())
+    Some(
+        unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 fn image_from(rgba: Vec<u8>, width: u32, height: u32) -> LlampImage {
     let len = rgba.len();
     let data = Box::into_raw(rgba.into_boxed_slice()) as *mut u8;
-    LlampImage { data, width, height, len }
+    LlampImage {
+        data,
+        width,
+        height,
+        len,
+    }
 }
 
 fn polygons(skin: &llamp_skin::Skin, mode: u32) -> &[llamp_skin::Polygon] {
@@ -460,6 +518,7 @@ fn snapshot_to_c(snap: PlaybackSnapshot) -> LlampPlayback {
         always_on_top: snap.always_on_top,
         double_size: snap.double_size,
         supports_eq: snap.supports_eq,
+        produces_pcm: snap.produces_pcm,
         volume_ppm: snap.volume_ppm,
         balance_ppm: snap.balance_ppm,
         title_len: snap.title_len,
@@ -492,7 +551,10 @@ pub struct LlampDock {
 /// Equalizer size in skin pixels. Same locked rectangle as the main window.
 #[no_mangle]
 pub extern "C" fn llamp_eq_size() -> LlampSize {
-    LlampSize { width: llamp_skin::EQ_WIDTH, height: llamp_skin::EQ_HEIGHT }
+    LlampSize {
+        width: llamp_skin::EQ_WIDTH,
+        height: llamp_skin::EQ_HEIGHT,
+    }
 }
 
 #[no_mangle]
@@ -504,7 +566,14 @@ pub extern "C" fn llamp_eq_control_count() -> u32 {
 pub extern "C" fn llamp_eq_control_at(index: u32) -> LlampControl {
     let controls = llamp_skin::eq_controls();
     let Some(control) = controls.get(index as usize) else {
-        return LlampControl { id: 0, x: 0, y: 0, w: 0, h: 0, label: std::ptr::null() };
+        return LlampControl {
+            id: 0,
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+            label: std::ptr::null(),
+        };
     };
     LlampControl {
         id: control.id,
@@ -552,7 +621,9 @@ pub extern "C" fn llamp_eq_press(id: u32) {
 
 #[no_mangle]
 pub extern "C" fn llamp_eq_save_preset(name: *const c_char) -> i32 {
-    let Some(name) = cstr_path(name) else { return LLAMP_ERR_INVALID };
+    let Some(name) = cstr_path(name) else {
+        return LLAMP_ERR_INVALID;
+    };
     match session().with_eq(|eq| eq.save_preset(&name)) {
         Ok(Ok(())) => LLAMP_OK,
         _ => LLAMP_ERR_INVALID,
@@ -561,7 +632,9 @@ pub extern "C" fn llamp_eq_save_preset(name: *const c_char) -> i32 {
 
 #[no_mangle]
 pub extern "C" fn llamp_eq_load_preset(name: *const c_char) -> i32 {
-    let Some(name) = cstr_path(name) else { return LLAMP_ERR_INVALID };
+    let Some(name) = cstr_path(name) else {
+        return LLAMP_ERR_INVALID;
+    };
     match session().with_eq(|eq| eq.load_preset(&name)) {
         Ok(Ok(())) => LLAMP_OK,
         _ => LLAMP_ERR_INVALID,
@@ -586,7 +659,9 @@ pub extern "C" fn llamp_eq_save_default() -> i32 {
 
 #[no_mangle]
 pub extern "C" fn llamp_eq_preset_count() -> u32 {
-    session().with_eq(|eq| eq.preset_names().len() as u32).unwrap_or(0)
+    session()
+        .with_eq(|eq| eq.preset_names().len() as u32)
+        .unwrap_or(0)
 }
 
 /// Writes a NUL-terminated name into `out`. Returns `LLAMP_ERR_INVALID` if it does not fit.
@@ -599,7 +674,9 @@ pub extern "C" fn llamp_eq_preset_name(index: u32, out: *mut c_char, len: usize)
         .with_eq(|eq| eq.preset_names().get(index as usize).cloned())
         .ok()
         .flatten();
-    let Some(name) = name else { return LLAMP_ERR_INVALID };
+    let Some(name) = name else {
+        return LLAMP_ERR_INVALID;
+    };
     let bytes = name.as_bytes();
     if bytes.len() + 1 > len {
         return LLAMP_ERR_INVALID;
@@ -613,7 +690,9 @@ pub extern "C" fn llamp_eq_preset_name(index: u32, out: *mut c_char, len: usize)
 
 #[no_mangle]
 pub extern "C" fn llamp_eq_set_store(path: *const c_char) -> i32 {
-    let Some(path) = cstr_path(path) else { return LLAMP_ERR_INVALID };
+    let Some(path) = cstr_path(path) else {
+        return LLAMP_ERR_INVALID;
+    };
     match session().with_eq(|eq| eq.set_store(Path::new(&path))) {
         Ok(Ok(())) => LLAMP_OK,
         _ => LLAMP_ERR_INVALID,
@@ -666,7 +745,12 @@ pub extern "C" fn llamp_eq_blit() -> LlampImage {
 
 #[no_mangle]
 pub extern "C" fn llamp_playlist_blit() -> LlampImage {
-    let empty = || LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+    let empty = || LlampImage {
+        data: std::ptr::null_mut(),
+        width: 0,
+        height: 0,
+        len: 0,
+    };
     let Ok(window) = playlist_window().lock() else {
         return empty();
     };
@@ -677,12 +761,21 @@ pub extern "C" fn llamp_playlist_blit() -> LlampImage {
     let Some(skin) = slot.current() else {
         return empty();
     };
-    image_from(llamp_skin::blit_playlist(skin, w as u32, h as u32), w as u32, h as u32)
+    image_from(
+        llamp_skin::blit_playlist(skin, w as u32, h as u32),
+        w as u32,
+        h as u32,
+    )
 }
 
 #[no_mangle]
 pub extern "C" fn llamp_gen_blit() -> LlampImage {
-    let empty = || LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+    let empty = || LlampImage {
+        data: std::ptr::null_mut(),
+        width: 0,
+        height: 0,
+        len: 0,
+    };
     let Ok(slot) = skin_slot().lock() else {
         return empty();
     };
@@ -707,14 +800,36 @@ pub extern "C" fn llamp_eq_begin_drag() {
 #[no_mangle]
 pub extern "C" fn llamp_eq_drag_window(which: u32, dx: i32, dy: i32) -> LlampDock {
     let Some(which) = llamp_core::Which::from_u32(which) else {
-        return LlampDock { main_x: 0, main_y: 0, main_w: 0, main_h: 0, eq_x: 0, eq_y: 0, eq_w: 0, eq_h: 0, docked: 0, group_on_top: 0 };
+        return LlampDock {
+            main_x: 0,
+            main_y: 0,
+            main_w: 0,
+            main_h: 0,
+            eq_x: 0,
+            eq_y: 0,
+            eq_w: 0,
+            eq_h: 0,
+            docked: 0,
+            group_on_top: 0,
+        };
     };
     session()
         .with_eq(|eq| {
             let moved = eq.drag(which, dx, dy);
             dock_from(moved, eq.window_on_top(which, session_on_top()))
         })
-        .unwrap_or(LlampDock { main_x: 0, main_y: 0, main_w: 0, main_h: 0, eq_x: 0, eq_y: 0, eq_w: 0, eq_h: 0, docked: 0, group_on_top: 0 })
+        .unwrap_or(LlampDock {
+            main_x: 0,
+            main_y: 0,
+            main_w: 0,
+            main_h: 0,
+            eq_x: 0,
+            eq_y: 0,
+            eq_w: 0,
+            eq_h: 0,
+            docked: 0,
+            group_on_top: 0,
+        })
 }
 
 #[no_mangle]
@@ -722,9 +837,23 @@ pub extern "C" fn llamp_eq_end_drag() -> LlampDock {
     session()
         .with_eq(|eq| {
             let moved = eq.end_drag();
-            dock_from(moved, eq.window_on_top(llamp_core::Which::Eq, session_on_top()))
+            dock_from(
+                moved,
+                eq.window_on_top(llamp_core::Which::Eq, session_on_top()),
+            )
         })
-        .unwrap_or(LlampDock { main_x: 0, main_y: 0, main_w: 0, main_h: 0, eq_x: 0, eq_y: 0, eq_w: 0, eq_h: 0, docked: 0, group_on_top: 0 })
+        .unwrap_or(LlampDock {
+            main_x: 0,
+            main_y: 0,
+            main_w: 0,
+            main_h: 0,
+            eq_x: 0,
+            eq_y: 0,
+            eq_w: 0,
+            eq_h: 0,
+            docked: 0,
+            group_on_top: 0,
+        })
 }
 
 #[no_mangle]
@@ -752,7 +881,12 @@ fn session_on_top() -> bool {
 }
 
 fn frame_from(frame: LlampFrame) -> llamp_core::Frame {
-    llamp_core::Frame { x: frame.x, y: frame.y, w: frame.w, h: frame.h }
+    llamp_core::Frame {
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
+    }
 }
 
 fn dock_from(dock: llamp_core::DockMove, main_on_top: bool) -> LlampDock {
@@ -792,13 +926,112 @@ fn playlist_window() -> &'static Mutex<llamp_core::PlaylistWindow> {
 }
 
 struct LibrarySlot {
-    lib: Option<llamp_library::Library>,
-    hits: Vec<std::path::PathBuf>,
+    source: Option<std::sync::Arc<LocalSource>>,
+    hits: Vec<SourceItem>,
 }
 
 fn library_slot() -> &'static Mutex<LibrarySlot> {
     static SLOT: OnceLock<Mutex<LibrarySlot>> = OnceLock::new();
-    SLOT.get_or_init(|| Mutex::new(LibrarySlot { lib: None, hits: Vec::new() }))
+    SLOT.get_or_init(|| {
+        Mutex::new(LibrarySlot {
+            source: None,
+            hits: Vec::new(),
+        })
+    })
+}
+
+fn plugin_registry() -> &'static Mutex<Registry> {
+    static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(Registry::new()))
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_plugin_count() -> u32 {
+    plugin_registry()
+        .lock()
+        .map(|reg| reg.count() as u32)
+        .unwrap_or(0)
+}
+
+/// Writes a NUL-terminated plugin id.
+#[no_mangle]
+pub extern "C" fn llamp_plugin_id(index: u32, out: *mut c_char, len: usize) -> i32 {
+    if out.is_null() || len == 0 {
+        return LLAMP_ERR_INVALID;
+    }
+    let Ok(registry) = plugin_registry().lock() else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Some(id) = registry.id_at(index as usize) else {
+        return LLAMP_ERR_INVALID;
+    };
+    let bytes = id.as_bytes();
+    if bytes.len() + 1 > len {
+        return LLAMP_ERR_INVALID;
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), out.cast(), bytes.len());
+        *out.add(bytes.len()) = 0;
+    }
+    LLAMP_OK
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_plugin_enable(id: *const c_char) -> i32 {
+    let Some(id) = cstr_path(id) else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Ok(mut registry) = plugin_registry().lock() else {
+        return LLAMP_ERR_INVALID;
+    };
+    if registry.enable(&id).is_ok() {
+        LLAMP_OK
+    } else {
+        LLAMP_ERR_INVALID
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_plugin_disable(id: *const c_char) -> i32 {
+    let Some(id) = cstr_path(id) else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Ok(mut registry) = plugin_registry().lock() else {
+        return LLAMP_ERR_INVALID;
+    };
+    if registry.disable(&id).is_ok() {
+        LLAMP_OK
+    } else {
+        LLAMP_ERR_INVALID
+    }
+}
+
+/// Writes the recorded refusal reason. Empty if the plugin was not refused.
+#[no_mangle]
+pub extern "C" fn llamp_plugin_refused_reason(
+    id: *const c_char,
+    out: *mut c_char,
+    len: usize,
+) -> i32 {
+    if out.is_null() || len == 0 {
+        return LLAMP_ERR_INVALID;
+    }
+    let Some(id) = cstr_path(id) else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Ok(registry) = plugin_registry().lock() else {
+        return LLAMP_ERR_INVALID;
+    };
+    let reason = registry.refused_reason(&id).unwrap_or("");
+    let bytes = reason.as_bytes();
+    if bytes.len() + 1 > len {
+        return LLAMP_ERR_INVALID;
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), out.cast(), bytes.len());
+        *out.add(bytes.len()) = 0;
+    }
+    LLAMP_OK
 }
 
 /// Opens the library database. Music stays at granted paths.
@@ -807,13 +1040,21 @@ pub extern "C" fn llamp_library_open(path: *const c_char) -> i32 {
     let Some(path) = cstr_path(path) else {
         return LLAMP_ERR_INVALID;
     };
-    let Ok(lib) = llamp_library::Library::open(Path::new(&path)) else {
+    let Ok(source) = LocalSource::open(Path::new(&path)) else {
         return LLAMP_ERR_INVALID;
     };
+    let source = std::sync::Arc::new(source);
+    if let Ok(mut registry) = plugin_registry().lock() {
+        if let Ok(manifest) = llamp_plugin_api::Manifest::parse(include_str!(
+            "../../../plugins/llamp-source-local/llamp-plugin.json"
+        )) {
+            let _ = registry.register_native(manifest, Some(source.clone()));
+        }
+    }
     let Ok(mut slot) = library_slot().lock() else {
         return LLAMP_ERR_INVALID;
     };
-    slot.lib = Some(lib);
+    slot.source = Some(source);
     slot.hits.clear();
     LLAMP_OK
 }
@@ -826,10 +1067,10 @@ pub extern "C" fn llamp_library_grant(dir: *const c_char) -> i32 {
     let Ok(slot) = library_slot().lock() else {
         return LLAMP_ERR_INVALID;
     };
-    let Some(lib) = slot.lib.as_ref() else {
+    let Some(source) = slot.source.as_ref() else {
         return LLAMP_ERR_INVALID;
     };
-    match lib.grant_folder(Path::new(&dir)) {
+    match source.grant_folder(Path::new(&dir)) {
         Ok(n) => i32::try_from(n).unwrap_or(LLAMP_ERR_INVALID),
         Err(_) => LLAMP_ERR_INVALID,
     }
@@ -841,14 +1082,14 @@ pub extern "C" fn llamp_library_search(query: *const c_char) -> u32 {
     let Ok(mut slot) = library_slot().lock() else {
         return 0;
     };
-    let Some(lib) = slot.lib.as_ref() else {
+    let Some(source) = slot.source.as_ref() else {
         return 0;
     };
-    let Ok(hits) = lib.search(&query) else {
+    let Ok(hits) = MediaSource::search(source.as_ref(), &query) else {
         slot.hits.clear();
         return 0;
     };
-    slot.hits = hits.into_iter().map(|hit| hit.path).collect();
+    slot.hits = hits;
     slot.hits.len() as u32
 }
 
@@ -861,11 +1102,10 @@ pub extern "C" fn llamp_library_hit_path(index: u32, out: *mut c_char, len: usiz
     let Ok(slot) = library_slot().lock() else {
         return LLAMP_ERR_INVALID;
     };
-    let Some(path) = slot.hits.get(index as usize) else {
+    let Some(hit) = slot.hits.get(index as usize) else {
         return LLAMP_ERR_INVALID;
     };
-    let bytes = path.to_string_lossy();
-    let bytes = bytes.as_bytes();
+    let bytes = hit.label.as_bytes();
     if bytes.len() + 1 > len {
         return LLAMP_ERR_INVALID;
     }
@@ -882,15 +1122,19 @@ pub extern "C" fn llamp_library_enqueue_hit(index: u32) -> i32 {
     let Ok(slot) = library_slot().lock() else {
         return LLAMP_ERR_INVALID;
     };
-    let Some(path) = slot.hits.get(index as usize).cloned() else {
+    let Some(hit) = slot.hits.get(index as usize).cloned() else {
         return LLAMP_ERR_INVALID;
     };
-    let Some(lib) = slot.lib.as_ref() else {
+    let Some(source) = slot.source.as_ref() else {
         return LLAMP_ERR_INVALID;
     };
-    if lib.enqueue(&path).is_err() {
+    if source.enqueue(Path::new(&hit.id)).is_err() {
         return LLAMP_ERR_INVALID;
     }
+    if let Ok(resolved) = MediaSource::resolve(source.as_ref(), &hit.id) {
+        session().apply_source_flags(resolved.flags);
+    }
+    let path = std::path::PathBuf::from(&hit.id);
     drop(slot);
     let Ok(mut window) = playlist_window().lock() else {
         return LLAMP_ERR_INVALID;
@@ -943,10 +1187,16 @@ pub extern "C" fn llamp_playlist_propose_size(w: i32, h: i32) -> i32 {
 #[no_mangle]
 pub extern "C" fn llamp_playlist_size() -> LlampSize {
     let Ok(window) = playlist_window().lock() else {
-        return LlampSize { width: 275, height: 116 };
+        return LlampSize {
+            width: 275,
+            height: 116,
+        };
     };
     let (w, h) = window.size();
-    LlampSize { width: w as u32, height: h as u32 }
+    LlampSize {
+        width: w as u32,
+        height: h as u32,
+    }
 }
 
 #[no_mangle]
@@ -1022,7 +1272,10 @@ pub extern "C" fn llamp_browser_row_font(text: *const c_char) -> u32 {
 #[no_mangle]
 pub extern "C" fn llamp_browser_size() -> LlampSize {
     let (w, h) = llamp_core::browser_size();
-    LlampSize { width: w as u32, height: h as u32 }
+    LlampSize {
+        width: w as u32,
+        height: h as u32,
+    }
 }
 
 fn browser_list() -> &'static Mutex<llamp_core::BrowserList> {
@@ -1036,13 +1289,13 @@ pub extern "C" fn llamp_browser_load_granted() -> u32 {
     let Ok(slot) = library_slot().lock() else {
         return 0;
     };
-    let Some(lib) = slot.lib.as_ref() else {
+    let Some(source) = slot.source.as_ref() else {
         return 0;
     };
     let Ok(mut list) = browser_list().lock() else {
         return 0;
     };
-    if list.load_granted(lib).is_err() {
+    if list.load_granted(source.as_ref()).is_err() {
         return 0;
     }
     list.rows().len() as u32
@@ -1084,10 +1337,20 @@ pub extern "C" fn llamp_browser_row_path(index: u32, out: *mut c_char, len: usiz
 pub extern "C" fn llamp_text_row_blit(text: *const c_char) -> LlampImage {
     let text = cstr(text);
     if row_mode(&text) != llamp_core::RowFont::Bitmap {
-        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+        return LlampImage {
+            data: std::ptr::null_mut(),
+            width: 0,
+            height: 0,
+            len: 0,
+        };
     }
     let Some(rgba) = blit_bitmap_row(&text) else {
-        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+        return LlampImage {
+            data: std::ptr::null_mut(),
+            width: 0,
+            height: 0,
+            len: 0,
+        };
     };
     let width = text.chars().count() as u32 * llamp_core::CELL_W as u32;
     image_from(rgba, width, llamp_core::ROW_H as u32)
@@ -1097,13 +1360,28 @@ pub extern "C" fn llamp_text_row_blit(text: *const c_char) -> LlampImage {
 #[no_mangle]
 pub extern "C" fn llamp_text_char_blit(scalar: u32) -> LlampImage {
     let Some(ch) = char::from_u32(scalar) else {
-        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+        return LlampImage {
+            data: std::ptr::null_mut(),
+            width: 0,
+            height: 0,
+            len: 0,
+        };
     };
     if !glyph_exists(ch) {
-        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+        return LlampImage {
+            data: std::ptr::null_mut(),
+            width: 0,
+            height: 0,
+            len: 0,
+        };
     }
     let Some(rgba) = blit_bitmap_char(ch) else {
-        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+        return LlampImage {
+            data: std::ptr::null_mut(),
+            width: 0,
+            height: 0,
+            len: 0,
+        };
     };
     image_from(rgba, llamp_core::CELL_W as u32, llamp_core::ROW_H as u32)
 }
@@ -1111,10 +1389,24 @@ pub extern "C" fn llamp_text_char_blit(scalar: u32) -> LlampImage {
 #[no_mangle]
 pub extern "C" fn llamp_playlist_button_at(index: u32) -> LlampControl {
     let Ok(window) = playlist_window().lock() else {
-        return LlampControl { id: index, x: 0, y: 0, w: 0, h: 0, label: std::ptr::null() };
+        return LlampControl {
+            id: index,
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+            label: std::ptr::null(),
+        };
     };
     let Some((label, x, y, w, h)) = window.menu_button(index as usize) else {
-        return LlampControl { id: index, x: 0, y: 0, w: 0, h: 0, label: std::ptr::null() };
+        return LlampControl {
+            id: index,
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+            label: std::ptr::null(),
+        };
     };
     LlampControl {
         id: index,
@@ -1183,7 +1475,12 @@ fn pane_from(which: u32) -> Option<llamp_core::Pane> {
 fn group_from(moved: llamp_core::GroupMove) -> LlampGroup {
     let frame = |pane| {
         let item = moved.frame(pane);
-        LlampFrame { x: item.x, y: item.y, w: item.w, h: item.h }
+        LlampFrame {
+            x: item.x,
+            y: item.y,
+            w: item.w,
+            h: item.h,
+        }
     };
     LlampGroup {
         main: frame(llamp_core::Pane::Main),
@@ -1198,7 +1495,12 @@ fn group_from(moved: llamp_core::GroupMove) -> LlampGroup {
 }
 
 fn empty_group() -> LlampGroup {
-    let zero = || LlampFrame { x: 0, y: 0, w: 0, h: 0 };
+    let zero = || LlampFrame {
+        x: 0,
+        y: 0,
+        w: 0,
+        h: 0,
+    };
     LlampGroup {
         main: zero(),
         eq: zero(),
@@ -1241,7 +1543,13 @@ fn blit_bitmap_row(text: &str) -> Option<Vec<u8>> {
     let mut out = vec![0u8; (width * height * 4) as usize];
     for (index, ch) in text.chars().enumerate() {
         let (_, rect) = skin.glyphs.iter().find(|(glyph, _)| *glyph == ch)?;
-        copy_atlas(&mut out, width, index as u32 * llamp_core::CELL_W as u32, skin, *rect);
+        copy_atlas(
+            &mut out,
+            width,
+            index as u32 * llamp_core::CELL_W as u32,
+            skin,
+            *rect,
+        );
     }
     Some(out)
 }
@@ -1255,7 +1563,13 @@ fn blit_bitmap_char(ch: char) -> Option<Vec<u8>> {
     Some(out)
 }
 
-fn copy_atlas(out: &mut [u8], dest_w: u32, dest_x: u32, skin: &llamp_skin::Skin, rect: llamp_skin::Rect) {
+fn copy_atlas(
+    out: &mut [u8],
+    dest_w: u32,
+    dest_x: u32,
+    skin: &llamp_skin::Skin,
+    rect: llamp_skin::Rect,
+) {
     let stride = skin.atlas_width;
     for y in 0..rect.h.min(7) {
         for x in 0..rect.w.min(5) {
@@ -1284,7 +1598,9 @@ fn cstr(text: *const c_char) -> String {
     if text.is_null() {
         return String::new();
     }
-    unsafe { CStr::from_ptr(text) }.to_string_lossy().into_owned()
+    unsafe { CStr::from_ptr(text) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn cstr_owned(title: *const c_char) -> Vec<u8> {

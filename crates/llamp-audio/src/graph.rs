@@ -18,15 +18,26 @@ pub struct Trace {
     pub pre_limiter_peak: f32,
 }
 
+/// First-party DSP callback. Native only. The default is a no-op.
+pub type DspFn = fn(&mut [f32]);
+
+pub fn dsp_noop(_frames: &mut [f32]) {}
+
 pub struct Stage {
     pub eq: Eq,
     pub limiter: Limiter,
     replaygain: f32,
+    dsp: DspFn,
 }
 
 impl Stage {
     pub fn new(sample_rate: u32) -> Self {
-        Self { eq: Eq::new(sample_rate), limiter: Limiter::new(sample_rate), replaygain: 1.0 }
+        Self {
+            eq: Eq::new(sample_rate),
+            limiter: Limiter::new(sample_rate),
+            replaygain: 1.0,
+            dsp: dsp_noop,
+        }
     }
 
     /// The live callback and `llamp play` use this. Sliders write its targets.
@@ -47,12 +58,15 @@ impl Stage {
             }
         }
         self.eq.process(frames);
+        (self.dsp)(frames);
         let mut peak = 0.0f32;
         for sample in frames.iter() {
             peak = peak.max(sample.abs());
         }
         self.limiter.process(frames);
-        Trace { pre_limiter_peak: peak }
+        Trace {
+            pre_limiter_peak: peak,
+        }
     }
 }
 
@@ -104,7 +118,8 @@ impl Callback {
             }
         }
         if filled > 0 {
-            self.played.fetch_add((filled / 2) as u64, Ordering::Relaxed);
+            self.played
+                .fetch_add((filled / 2) as u64, Ordering::Relaxed);
         }
         let _ = self.stage.process(out);
     }
@@ -112,6 +127,11 @@ impl Callback {
     /// The window slider path. Does not copy coefficients onto this callback.
     pub fn bind_ui_sliders(&mut self) {
         self.stage.eq.bind_ui_sliders();
+    }
+
+    /// Swap the first-party DSP slot at a buffer boundary. Not called from the callback.
+    pub fn set_dsp(&mut self, dsp: DspFn) {
+        self.stage.dsp = dsp;
     }
 
     pub fn push_pcm(&mut self, interleaved: &[f32]) -> usize {
@@ -154,13 +174,21 @@ pub fn join_gapless(a: &Path, b: &Path) -> Result<Vec<f32>, DecodeError> {
     Ok(joined)
 }
 
-pub fn seek_landing(path: &Path, frame: u64, period: u32) -> Result<decode::SeekLanding, DecodeError> {
+pub fn seek_landing(
+    path: &Path,
+    frame: u64,
+    period: u32,
+) -> Result<decode::SeekLanding, DecodeError> {
     decode::seek_to(path, frame, period)
 }
 
 /// Decode-and-graph path `llamp play` uses, without opening a device.
 /// `set_band` is the CLI drag or a window slider. Ten slices, one band each.
-pub fn band_sweep_ratios(pcm: &[f32], rate: u32, mut set_band: impl FnMut(usize, f32)) -> [f32; 10] {
+pub fn band_sweep_ratios(
+    pcm: &[f32],
+    rate: u32,
+    mut set_band: impl FnMut(usize, f32),
+) -> [f32; 10] {
     crate::set_eq_enabled(true);
     let frames = pcm.len() / 2;
     let per = frames / 10;
