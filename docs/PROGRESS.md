@@ -10,8 +10,9 @@ Done locally on 2026-09-13:
 - `MACOSX_DEPLOYMENT_TARGET` is 26.0. The workflow `runs-on` label is `macos-26`.
 - MSRV recorded as `rust-version = "1.97"`. Local toolchain is rustc 1.97.1.
 - GitHub Actions run 34799863904 is green on `macos-26`: https://github.com/kevinmullin/LLaMP/actions/runs/34799863904. Job `test` ran with label `macos-26` on runner `GitHub Actions 1000001754`.
+- `llamp_buffer` returns a 64 KiB block. `llamp_buffer_free` is the documented free. Test: `crates/llamp-ffi/tests/buffer.rs`. Header regenerated with cbindgen 0.29.4.
+- `llamp_counter_publish` is an atomic increment and takes no lock. `llamp_counter_poll` loads it and does not wait. Swift `FrameCounter.poll` calls that load. Test: `shells/macos/Tests/LLaMPFFITests/CounterPollTests.swift` polls at 60 Hz for one second. The green run above does not include the buffer or the counter.
 
 Phase 0 exit is not met:
 
-- The 64 KB buffer probe and the polled counter are not exported.
-- There is no Swift package and no smoke window.
+- There is no smoke window.

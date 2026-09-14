@@ -1,0 +1,4 @@
+module llamp_ffi {
+    header "llamp.h"
+    export *
+}

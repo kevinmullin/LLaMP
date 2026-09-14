@@ -9,9 +9,50 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define LLAMP_OK 0
+
+#define LLAMP_ERR_INVALID 1
+
+/**
+ * 64 KiB dummy buffer owned by the core.
+ *
+ * The caller frees `data` with `llamp_buffer_free` exactly once. `len` is 65536.
+ * This struct is not a heap allocation. Do not pass it to `llamp_buffer_free`.
+ */
+typedef struct LlampBuffer {
+  uint8_t *data;
+  size_t len;
+} LlampBuffer;
+
 /**
  * NUL-terminated crate version. The caller does not free this pointer.
  */
 const char *llamp_version(void);
+
+/**
+ * Returns a 64 KiB dummy buffer. The caller frees `data` with `llamp_buffer_free` exactly once.
+ *
+ * A null `data` and `len` of 0 means no buffer was returned. That happens on allocation failure,
+ * or if a previous buffer has not been freed. The failed call does not leak.
+ */
+struct LlampBuffer llamp_buffer(void);
+
+/**
+ * Frees `data` from `llamp_buffer`.
+ *
+ * Returns `LLAMP_OK` after deallocating the 64 KiB block. Returns `LLAMP_ERR_INVALID` for a
+ * null pointer, an unknown pointer, or a double-free, and does not deallocate in those cases.
+ */
+int32_t llamp_buffer_free(uint8_t *data);
+
+/**
+ * Increments the frame counter. Takes no lock.
+ */
+void llamp_counter_publish(void);
+
+/**
+ * Loads the frame counter. Does not wait.
+ */
+uint64_t llamp_counter_poll(void);
 
 #endif  /* LLAMP_H */

@@ -1,1 +1,4 @@
 /target
+/shells/macos/.build
+/shells/macos/.swiftpm
+/shells/macos/LlampFFI.xcframework

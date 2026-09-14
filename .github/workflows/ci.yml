@@ -19,3 +19,7 @@ jobs:
           cargo install cbindgen --version 0.29.4 --locked
           cbindgen --config crates/llamp-ffi/cbindgen.toml --crate llamp-ffi --output /tmp/llamp.h
           diff -u crates/llamp-ffi/include/llamp.h /tmp/llamp.h
+      - name: Swift polls the counter at 60 Hz
+        run: |
+          shells/macos/build-xcframework.sh
+          swift test --package-path shells/macos
