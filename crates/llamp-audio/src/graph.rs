@@ -53,6 +53,8 @@ pub struct Callback {
     consumer: rtrb::Consumer<f32>,
     producer: rtrb::Producer<f32>,
     underruns: AtomicU64,
+    /// Frames copied from the ring. The callback only `fetch_add`s this.
+    played: AtomicU64,
     stage: Stage,
 }
 
@@ -64,12 +66,18 @@ impl Callback {
             consumer,
             producer,
             underruns: AtomicU64::new(0),
+            played: AtomicU64::new(0),
             stage: Stage::new(sample_rate),
         }
     }
 
     pub fn underruns(&self) -> u64 {
         self.underruns.load(Ordering::Relaxed)
+    }
+
+    /// Loads the frame count the callback published. Does not wait.
+    pub fn played_frames(&self) -> u64 {
+        self.played.load(Ordering::Relaxed)
     }
 
     /// Pop one period from the ring, or silence and one underrun. Then the graph, in place.
@@ -87,6 +95,9 @@ impl Callback {
                     break;
                 }
             }
+        }
+        if filled > 0 {
+            self.played.fetch_add((filled / 2) as u64, Ordering::Relaxed);
         }
         let _ = self.stage.process(out);
     }

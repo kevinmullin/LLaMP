@@ -25,6 +25,67 @@ typedef struct LlampBuffer {
 } LlampBuffer;
 
 /**
+ * Main window size in skin pixels. The shell does not hard-code this.
+ */
+typedef struct LlampSize {
+  uint32_t width;
+  uint32_t height;
+} LlampSize;
+
+/**
+ * RGBA image owned by the core. Free `data` with `llamp_image_free` exactly once.
+ *
+ * A null `data` means no image. `len` is `width * height * 4`.
+ */
+typedef struct LlampImage {
+  uint8_t *data;
+  uint32_t width;
+  uint32_t height;
+  size_t len;
+} LlampImage;
+
+typedef struct LlampControl {
+  uint32_t id;
+  uint32_t x;
+  uint32_t y;
+  uint32_t w;
+  uint32_t h;
+  /**
+   * Static string. The caller does not free it.
+   */
+  const char *label;
+} LlampControl;
+
+typedef struct LlampPoint {
+  int32_t x;
+  int32_t y;
+} LlampPoint;
+
+/**
+ * Playback snapshot. Returned by value. The caller does not free it.
+ *
+ * Does not wait. Takes no lock. The audio callback does not publish this
+ * struct; it only increments a frame counter the poll reads.
+ */
+typedef struct LlampPlayback {
+  uint64_t position_frames;
+  uint64_t duration_frames;
+  uint32_t sample_rate;
+  uint16_t source_channels;
+  uint8_t transport;
+  uint8_t shuffle;
+  uint8_t repeat_mode;
+  uint8_t time_remaining;
+  uint8_t vis_mode;
+  uint8_t always_on_top;
+  uint8_t double_size;
+  uint16_t volume_ppm;
+  uint16_t balance_ppm;
+  uint16_t title_len;
+  uint8_t title[256];
+} LlampPlayback;
+
+/**
  * NUL-terminated crate version. The caller does not free this pointer.
  */
 const char *llamp_version(void);
@@ -54,5 +115,85 @@ void llamp_counter_publish(void);
  * Loads the frame counter. Does not wait.
  */
 uint64_t llamp_counter_poll(void);
+
+struct LlampSize llamp_main_size(void);
+
+/**
+ * Shade height in skin pixels.
+ */
+uint32_t llamp_shade_height(void);
+
+/**
+ * Loads a `.wsz`. The shell does not parse it. Returns `LLAMP_OK` or `LLAMP_ERR_INVALID`.
+ */
+int32_t llamp_skin_load(const uint8_t *bytes, size_t len);
+
+/**
+ * Idle main-window blit. Matches the phase 2 PNG for the fixture skin.
+ *
+ * The caller frees `data` with `llamp_image_free`.
+ */
+struct LlampImage llamp_skin_blit_main(void);
+
+/**
+ * Display blit. Polls playback, then stamps time and the marquee. Does not wait.
+ *
+ * Idle session values are not applied here; the caller keeps `llamp_skin_blit_main`
+ * until a poll is not the idle snapshot. The caller frees `data` with `llamp_image_free`.
+ */
+struct LlampImage llamp_skin_blit_display(uint32_t marquee_skip);
+
+/**
+ * Frees `data` from `llamp_skin_blit_main`. `len` is the returned length.
+ */
+void llamp_image_free(uint8_t *data, size_t len);
+
+uint32_t llamp_control_count(void);
+
+/**
+ * A null label means `index` is out of range.
+ */
+struct LlampControl llamp_control_at(uint32_t index);
+
+/**
+ * `mode` 0 is the normal mask. `mode` 1 is the window-shade mask.
+ */
+uint32_t llamp_region_polygon_count(uint32_t mode);
+
+uint32_t llamp_region_point_count(uint32_t mode, uint32_t polygon);
+
+struct LlampPoint llamp_region_point(uint32_t mode, uint32_t polygon, uint32_t index);
+
+struct LlampPlayback llamp_playback_poll(void);
+
+/**
+ * Sets duration and title for a session that does not open a device.
+ * `title` may be null. A missing NUL is truncated at `TITLE_CAP`.
+ */
+void llamp_session_configure(uint32_t sample_rate,
+                             uint64_t frames,
+                             uint16_t channels,
+                             const char *title);
+
+void llamp_transport_toggle_play(void);
+
+void llamp_transport_seek_by(int32_t frames);
+
+void llamp_transport_press(uint32_t id);
+
+/**
+ * Seek (id 15) jumps to `duration * ppm / 1000`. Volume and balance are visual only and do not apply a gain law.
+ */
+void llamp_transport_set_slider(uint32_t id,
+                                uint16_t ppm);
+
+/**
+ * Retains every file in `refs_dir` and loops `track` through the output.
+ * Oscilloscope stays the vis mode (0). Spectrum bars are not drawn.
+ * The callback still only `fetch_add`s. Returns `LLAMP_OK` or `LLAMP_ERR_INVALID`.
+ */
+int32_t llamp_budget_prepare(const char *track, const char *refs_dir);
+
+uint32_t llamp_reference_count(void);
 
 #endif  /* LLAMP_H */

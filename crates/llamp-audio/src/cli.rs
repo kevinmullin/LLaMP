@@ -2,8 +2,9 @@
 
 use std::path::Path;
 use std::process::ExitCode;
-use std::sync::atomic::Ordering;
-use std::thread;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait};
@@ -13,8 +14,94 @@ use rubato::{Fft, FixedSync, Indexing, Resampler};
 
 use crate::cpal_output::CpalOutput;
 use crate::decode;
-use crate::output::{self, Output, OutputEvents, StreamRequest};
+use crate::live::{self, PCM_WINDOW};
+use crate::output::{self, Output, OutputEvents, Playback, StreamRequest};
 use crate::wav::{self, WavBits};
+
+/// Keeps a looping feeder and the stream alive. Drop stops both.
+/// The callback only copies the ring. This thread publishes the PCM window.
+pub struct LoopPlayback {
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+    stream: Option<Box<dyn Playback>>,
+}
+
+impl Drop for LoopPlayback {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+        if let Some(mut stream) = self.stream.take() {
+            stream.stop();
+        }
+    }
+}
+
+/// Decode, resample once, then loop into the ring. Does not run on the callback.
+pub fn play_loop(input: &Path, events: Arc<OutputEvents>) -> Result<LoopPlayback, String> {
+    let decoded = decode::decode_path(input).map_err(|err| err.to_string())?;
+    let host_rate = open_rate()?;
+    let stereo = resample_to_device(&decoded.frames, decoded.sample_rate, host_rate)?;
+    if stereo.len() < 2 {
+        return Err("track has no frames".into());
+    }
+    let capacity = output::ring_capacity(host_rate, 2);
+    let (producer, consumer) = RingBuffer::new(capacity);
+    let mut backend = CpalOutput::new();
+    let request = StreamRequest { device_id: None, sample_rate: host_rate, channels: 2 };
+    let stream = backend.open(request, consumer, events).map_err(|err| err.to_string())?;
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop_thread = Arc::clone(&stop);
+    let thread = thread::Builder::new()
+        .name("llamp-feeder".into())
+        .spawn(move || feed_loop(producer, stereo, stop_thread))
+        .map_err(|err| err.to_string())?;
+    Ok(LoopPlayback { stop, thread: Some(thread), stream: Some(stream) })
+}
+
+fn feed_loop(mut producer: rtrb::Producer<f32>, stereo: Vec<f32>, stop: Arc<AtomicBool>) {
+    let mut offset = 0usize;
+    let mut window = [0f32; PCM_WINDOW];
+    let mut cursor = 0usize;
+    let mut since_publish = 0usize;
+    while !stop.load(Ordering::Relaxed) {
+        if producer.slots() < 2 {
+            thread::sleep(Duration::from_millis(2));
+            continue;
+        }
+        let sample = stereo[offset];
+        if producer.push(sample).is_err() {
+            thread::sleep(Duration::from_millis(2));
+            continue;
+        }
+        offset += 1;
+        if offset >= stereo.len() {
+            offset = 0;
+        }
+        if offset % 2 == 1 {
+            window[cursor % PCM_WINDOW] = sample;
+            cursor += 1;
+            since_publish += 1;
+            if since_publish >= live::PCM_WINDOW / 2 {
+                live::publish_pcm(&ordered(&window, cursor));
+                since_publish = 0;
+            }
+        }
+    }
+}
+
+fn ordered(window: &[f32; PCM_WINDOW], cursor: usize) -> [f32; PCM_WINDOW] {
+    let mut out = [0f32; PCM_WINDOW];
+    if cursor < PCM_WINDOW {
+        out[PCM_WINDOW - cursor..].copy_from_slice(&window[..cursor]);
+        return out;
+    }
+    let start = cursor % PCM_WINDOW;
+    out[..PCM_WINDOW - start].copy_from_slice(&window[start..]);
+    out[PCM_WINDOW - start..].copy_from_slice(&window[..start]);
+    out
+}
 
 pub fn run() -> ExitCode {
     match dispatch() {

@@ -71,6 +71,46 @@ pub fn slices() -> &'static [Slice] {
     &SLICES
 }
 
+pub fn controls() -> &'static [Control] {
+    &CONTROLS
+}
+
+pub fn control_label(control: Control) -> &'static str {
+    match control {
+        Control::Titlebar => "Title bar",
+        Control::Minimize => "Minimize",
+        Control::Shade => "Shade",
+        Control::Close => "Close",
+        Control::ClutterO => "Options",
+        Control::ClutterA => "Always on top",
+        Control::ClutterI => "File info",
+        Control::ClutterD => "Double size",
+        Control::ClutterV => "Visualizer",
+        Control::Previous => "Previous",
+        Control::Play => "Play",
+        Control::Pause => "Pause",
+        Control::Stop => "Stop",
+        Control::Next => "Next",
+        Control::Eject => "Eject",
+        Control::Seek => "Seek",
+        Control::Volume => "Volume",
+        Control::Balance => "Balance",
+        Control::Mono => "Mono",
+        Control::Stereo => "Stereo",
+        Control::EqToggle => "Equalizer",
+        Control::PlaylistToggle => "Playlist",
+        Control::Shuffle => "Shuffle",
+        Control::Repeat => "Repeat",
+        Control::Time => "Time",
+        Control::Marquee => "Marquee",
+        Control::VisPane => "Visualizer pane",
+    }
+}
+
+pub fn control_from_id(id: u32) -> Option<Control> {
+    CONTROLS.iter().copied().find(|control| *control as u32 == id)
+}
+
 pub fn control_rect(control: Control) -> Rect {
     match control {
         Control::Titlebar => r(0, 0, 275, 14),
@@ -110,6 +150,36 @@ pub const TIME_TEXT: &str = "0:00";
 pub const GLYPH_CELL: (u32, u32) = (5, 7);
 pub const GLYPH_COLUMNS: u32 = 16;
 pub const ATLAS_STRIDE: u32 = 512;
+
+const CONTROLS: [Control; 27] = [
+    Control::Titlebar,
+    Control::Minimize,
+    Control::Shade,
+    Control::Close,
+    Control::ClutterO,
+    Control::ClutterA,
+    Control::ClutterI,
+    Control::ClutterD,
+    Control::ClutterV,
+    Control::Previous,
+    Control::Play,
+    Control::Pause,
+    Control::Stop,
+    Control::Next,
+    Control::Eject,
+    Control::Seek,
+    Control::Volume,
+    Control::Balance,
+    Control::Mono,
+    Control::Stereo,
+    Control::EqToggle,
+    Control::PlaylistToggle,
+    Control::Shuffle,
+    Control::Repeat,
+    Control::Time,
+    Control::Marquee,
+    Control::VisPane,
+];
 
 static SLICES: [Slice; 63] = [
     Slice {

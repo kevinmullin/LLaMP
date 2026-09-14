@@ -36,6 +36,9 @@ pub struct OutputEvents {
     pub period_frames: AtomicU32,
     pub sample_rate: AtomicU32,
     pub period_outside: AtomicBool,
+    /// Frames the callback copied from the ring. The UI loads this. The callback
+    /// only `fetch_add`s it. It does not lock.
+    pub played_frames: AtomicU64,
 }
 
 impl OutputEvents {
@@ -47,6 +50,7 @@ impl OutputEvents {
             period_frames: AtomicU32::new(0),
             sample_rate: AtomicU32::new(0),
             period_outside: AtomicBool::new(false),
+            played_frames: AtomicU64::new(0),
         })
     }
 
@@ -75,6 +79,7 @@ impl Default for OutputEvents {
             period_frames: AtomicU32::new(0),
             sample_rate: AtomicU32::new(0),
             period_outside: AtomicBool::new(false),
+            played_frames: AtomicU64::new(0),
         }
     }
 }

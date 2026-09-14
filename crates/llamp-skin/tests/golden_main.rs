@@ -121,6 +121,78 @@ fn double_size_is_nearest_neighbor_not_a_blend() {
     assert_ne!(pixel(&doubled, 550, 16, 28), blend);
 }
 
+#[test]
+fn seek_ppm_moves_the_thumb() {
+    let wsz = xtask::fixture_wsz();
+    let mut slot = llamp_skin::SkinSlot::new();
+    let skin = slot.load_wsz(&wsz).expect("fixture");
+    let left = llamp_skin::blit_display(
+        skin,
+        llamp_skin::Display {
+            time: "1:00",
+            ..llamp_skin::Display::default()
+        },
+    );
+    let right = llamp_skin::blit_display(
+        skin,
+        llamp_skin::Display {
+            time: "1:00",
+            seek_ppm: 1000,
+            ..llamp_skin::Display::default()
+        },
+    );
+    assert_ne!(left, right);
+}
+
+#[test]
+fn scope_paints_inside_the_vis_pane_and_not_as_bars() {
+    let wsz = xtask::fixture_wsz();
+    let mut slot = llamp_skin::SkinSlot::new();
+    let skin = slot.load_wsz(&wsz).expect("fixture");
+    let pane = {
+        // The blit uses this rect. The test only checks the pixel stays inside it.
+        llamp_skin::blit_display(
+            skin,
+            llamp_skin::Display {
+                time: "1:00",
+                scope: Some(&[1.0, -1.0]),
+                ..llamp_skin::Display::default()
+            },
+        )
+    };
+    let plain = llamp_skin::blit_display(
+        skin,
+        llamp_skin::Display {
+            time: "1:00",
+            ..llamp_skin::Display::default()
+        },
+    );
+    assert_ne!(pane, plain);
+    let plot = [0, 255, 0, 255];
+    let mut hits = 0u32;
+    for y in 0..116 {
+        for x in 0..275 {
+            let i = ((y * 275 + x) * 4) as usize;
+            if pane[i..i + 4] == plot {
+                hits += 1;
+                assert!((24..24 + 76).contains(&x), "plot x {x} left the vis pane");
+                assert!((52..52 + 16).contains(&y), "plot y {y} left the vis pane");
+            }
+        }
+    }
+    assert!(hits >= 1);
+    assert!(hits <= 76, "one column is a pixel, not a bar: {hits}");
+}
+
+#[test]
+fn idle_display_matches_the_main_blit() {
+    let wsz = xtask::fixture_wsz();
+    let mut slot = llamp_skin::SkinSlot::new();
+    let skin = slot.load_wsz(&wsz).expect("fixture");
+    let idle = llamp_skin::blit_display(skin, llamp_skin::Display::default());
+    assert_eq!(idle, llamp_skin::blit_main(skin));
+}
+
 fn pixel(buf: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
     let i = ((y * width + x) * 4) as usize;
     buf[i..i + 4].try_into().unwrap()

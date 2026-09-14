@@ -114,14 +114,21 @@ fn fill_float(data: &mut [f32], ring: &mut Consumer<f32>, events: &OutputEvents)
     let channels = if data.is_empty() { 1 } else { 1.max(data.len() / data.len()) };
     let _ = channels;
     let mut missed = false;
+    let mut consumed = 0u64;
     for sample in data.iter_mut() {
         match ring.pop() {
-            Ok(value) => *sample = value,
+            Ok(value) => {
+                *sample = value;
+                consumed += 1;
+            }
             Err(_) => {
                 *sample = 0.0;
                 missed = true;
             }
         }
+    }
+    if consumed > 0 {
+        events.played_frames.fetch_add(consumed / 2, Ordering::Relaxed);
     }
     if missed {
         events.underruns.fetch_add(1, Ordering::Relaxed);
@@ -134,15 +141,22 @@ fn fill_float(data: &mut [f32], ring: &mut Consumer<f32>, events: &OutputEvents)
 
 fn fill_i16(data: &mut [i16], ring: &mut Consumer<f32>, events: &OutputEvents, rng: &mut u32) {
     let mut missed = false;
+    let mut consumed = 0u64;
     for sample in data.iter_mut() {
         let value = match ring.pop() {
-            Ok(value) => value,
+            Ok(value) => {
+                consumed += 1;
+                value
+            }
             Err(_) => {
                 missed = true;
                 0.0
             }
         };
         *sample = tpdf_i16(value, rng);
+    }
+    if consumed > 0 {
+        events.played_frames.fetch_add(consumed / 2, Ordering::Relaxed);
     }
     if missed {
         events.underruns.fetch_add(1, Ordering::Relaxed);

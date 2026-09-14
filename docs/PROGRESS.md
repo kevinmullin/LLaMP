@@ -60,3 +60,17 @@ Done locally on 2026-09-13. `cargo test --package llamp-skin`: 22 passed (8 BMP,
 - `fuzz/fuzz_targets/zip_reader.rs` and `bmp_decoder.rs` exist. `docs/TESTING.md` holds the caps and those targets as a standing requirement, not a one-time check.
 
 Not in this phase: FFI for the atlas, EQ and playlist goldens, the three authored skins, and CoreText for a missing glyph. The blit records a missing scalar by not drawing it.
+
+## 3 — macOS main window
+
+Done locally on 2026-09-14. Not a phase-3 exit. The window paints. The four budget numbers passed on this machine. Spectrum bars, kbps, snap, and the rest of phase 5b are still out.
+
+- Borderless `NSWindow`. Size is `llamp_main_size`. Shade height is `llamp_shade_height` (14). Hit regions and AX children come from `llamp_control_count` / `llamp_control_at`. Drag is anywhere except a control. Always-on-top starts at `.normal`. Double-size is the snapshot flag times skin scale, nearest-neighbor.
+- Capture is the content view drawn into an sRGB `CGContext` and wrapped as `NSBitmapImageRep`. No display profile, no window-server capture. `ChromeCaptureTests` matches `crates/llamp-skin/tests/fixtures/golden/main-275x116.png` at 1×. The 2× backing-store edge is a hard pixel, not a blend. `layer.magnificationFilter` is `.nearest`.
+- Playback pull is `llamp_playback_poll`. It copies the seqlock, then adds `played_frames` (`AtomicU64`, callback `fetch_add` only). It does not wait, lock, or use a channel. ADR 003 is unchanged.
+- `llamp_skin_blit_display` stamps elapsed or remaining time, the marquee (missing glyphs are not drawn), and the volume, balance, and seek thumbs. Thumb travel is the fixture track slice minus the thumb slice. Seek id 15 jumps to `duration * ppm / 1000`. Volume and balance are visual parts-per-thousand. No gain or pan law.
+- Space toggles play. Arrows seek `±sample_rate` frames (`ARROW_SEEK_SECONDS` is 1, not a classic-player constant). Those actions are on the AX children, with roles, not labels only. Eject, options, file info, EQ, and playlist are hit regions and AX actions. They do not open windows.
+- CI gates on `macos-26`: `shells/macos/scripts/phase3-budgets.sh`. Local release run: `bundle_bytes 3989504`, process stdout `painted 27`, wall `launch_ms 82.3`. Both are under the numbers. The size artifact is a directory copy of the executable. The product bundle id is unset, so this is not a notarized `.app`.
+- Idle sample, same script, after a 5 s warmup then 30 one-second `ps` samples: window visible, one generated tone looping through the output, oscilloscope painted into the fixture vis pane, other windows closed, 1000 library rows with `tracks.storage = 'referenced'`. `idle_rss_kib_max 80624` (under 80 MiB). `idle_cpu_percent_mean 0.6` (under 5% of one P-core). The numbers were not raised. The connection stays open. `PRAGMA cache_size` is −64 (64 KiB) so the default page cache does not take the scene over 80 MiB. `rusqlite` is 0.32.1, bundled SQLite, FTS5 present (`CREATE VIRTUAL TABLE … USING fts5` in the crate test). The crate has no `fts5` feature. Schema is `migrations/001.sql` and `user_version` 1. Grant, watch, FTS search, tags, and M3U stay in phase 5b.
+
+Not in this slice: kbps/kHz blit (no fixture coordinates, no bitrate field), spectrum bar geometry (no 76×16 golden, no hard-coded bar count), peak-hold, CoreText, snap, folder grant and watch, and EQ and playlist windows. The vis pane click still flips `vis_mode`. Mode 1 does not invent bars.

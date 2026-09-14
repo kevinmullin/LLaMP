@@ -1,6 +1,13 @@
 use std::alloc::{alloc, dealloc, Layout};
-use std::ffi::c_char;
+use std::ffi::{c_char, CStr, CString};
+use std::path::Path;
 use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
+
+use llamp_core::{PlaybackSnapshot, Session};
+
+const _: () = assert!(llamp_core::TITLE_CAP == 256);
+use llamp_skin::SkinSlot;
 
 pub const LLAMP_OK: i32 = 0;
 pub const LLAMP_ERR_INVALID: i32 = 1;
@@ -99,4 +106,363 @@ pub extern "C" fn llamp_counter_publish() {
 #[no_mangle]
 pub extern "C" fn llamp_counter_poll() -> u64 {
     COUNTER.load(Ordering::Acquire)
+}
+
+fn skin_slot() -> &'static Mutex<SkinSlot> {
+    static SKIN: OnceLock<Mutex<SkinSlot>> = OnceLock::new();
+    SKIN.get_or_init(|| Mutex::new(SkinSlot::new()))
+}
+
+fn session() -> &'static Session {
+    static SESSION: OnceLock<Session> = OnceLock::new();
+    SESSION.get_or_init(Session::new)
+}
+
+fn label_ptr(id: u32) -> *const c_char {
+    static LABELS: OnceLock<Vec<CString>> = OnceLock::new();
+    let labels = LABELS.get_or_init(|| {
+        llamp_skin::controls()
+            .iter()
+            .map(|control| CString::new(llamp_skin::control_label(*control)).expect("label has no NUL"))
+            .collect()
+    });
+    labels.get(id as usize).map(|label| label.as_ptr()).unwrap_or(std::ptr::null())
+}
+
+/// Main window size in skin pixels. The shell does not hard-code this.
+#[repr(C)]
+pub struct LlampSize {
+    pub width: u32,
+    pub height: u32,
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_main_size() -> LlampSize {
+    LlampSize { width: llamp_skin::MAIN_WIDTH, height: llamp_skin::MAIN_HEIGHT }
+}
+
+/// Shade height in skin pixels.
+#[no_mangle]
+pub extern "C" fn llamp_shade_height() -> u32 {
+    llamp_skin::SHADE_HEIGHT
+}
+
+/// RGBA image owned by the core. Free `data` with `llamp_image_free` exactly once.
+///
+/// A null `data` means no image. `len` is `width * height * 4`.
+#[repr(C)]
+pub struct LlampImage {
+    pub data: *mut u8,
+    pub width: u32,
+    pub height: u32,
+    pub len: usize,
+}
+
+/// Loads a `.wsz`. The shell does not parse it. Returns `LLAMP_OK` or `LLAMP_ERR_INVALID`.
+#[no_mangle]
+pub extern "C" fn llamp_skin_load(bytes: *const u8, len: usize) -> i32 {
+    if bytes.is_null() || len == 0 {
+        return LLAMP_ERR_INVALID;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(bytes, len) };
+    let mut slot = match skin_slot().lock() {
+        Ok(slot) => slot,
+        Err(_) => return LLAMP_ERR_INVALID,
+    };
+    match slot.load_wsz(slice) {
+        Ok(_) => LLAMP_OK,
+        Err(_) => LLAMP_ERR_INVALID,
+    }
+}
+
+/// Idle main-window blit. Matches the phase 2 PNG for the fixture skin.
+///
+/// The caller frees `data` with `llamp_image_free`.
+#[no_mangle]
+pub extern "C" fn llamp_skin_blit_main() -> LlampImage {
+    let slot = match skin_slot().lock() {
+        Ok(slot) => slot,
+        Err(_) => return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 },
+    };
+    let Some(skin) = slot.current() else {
+        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+    };
+    let rgba = llamp_skin::blit_main(skin);
+    image_from(rgba, llamp_skin::MAIN_WIDTH, llamp_skin::MAIN_HEIGHT)
+}
+
+/// Display blit. Polls playback, then stamps time and the marquee. Does not wait.
+///
+/// Idle session values are not applied here; the caller keeps `llamp_skin_blit_main`
+/// until a poll is not the idle snapshot. The caller frees `data` with `llamp_image_free`.
+#[no_mangle]
+pub extern "C" fn llamp_skin_blit_display(marquee_skip: u32) -> LlampImage {
+    let snap = session().poll();
+    let pcm = llamp_audio::live::pcm_snapshot();
+    let time = format_time(&snap);
+    let title = String::from_utf8_lossy(&snap.title[..snap.title_len as usize]).into_owned();
+    let slot = match skin_slot().lock() {
+        Ok(slot) => slot,
+        Err(_) => return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 },
+    };
+    let Some(skin) = slot.current() else {
+        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+    };
+    let rgba = llamp_skin::blit_display(
+        skin,
+        llamp_skin::Display {
+            time: &time,
+            marquee: &title,
+            marquee_skip: marquee_skip as usize,
+            volume_ppm: snap.volume_ppm,
+            balance_ppm: snap.balance_ppm,
+            seek_ppm: seek_ppm(&snap),
+            scope: scope_samples(&snap, &pcm),
+        },
+    );
+    image_from(rgba, llamp_skin::MAIN_WIDTH, llamp_skin::MAIN_HEIGHT)
+}
+
+fn scope_samples<'a>(snap: &PlaybackSnapshot, pcm: &'a [f32]) -> Option<&'a [f32]> {
+    if snap.vis_mode == 0 && snap.transport == 1 {
+        Some(pcm)
+    } else {
+        None
+    }
+}
+
+fn seek_ppm(snap: &PlaybackSnapshot) -> u16 {
+    if snap.duration_frames == 0 {
+        return 0;
+    }
+    ((snap.position_frames.saturating_mul(1000)) / snap.duration_frames).min(1000) as u16
+}
+
+fn format_time(snap: &PlaybackSnapshot) -> String {
+    let rate = u64::from(snap.sample_rate.max(1));
+    let frames = if snap.time_remaining == 0 {
+        snap.position_frames
+    } else {
+        snap.duration_frames.saturating_sub(snap.position_frames)
+    };
+    let secs = frames / rate;
+    let minutes = secs / 60;
+    let seconds = secs % 60;
+    if snap.time_remaining == 0 {
+        format!("{minutes}:{seconds:02}")
+    } else {
+        format!("-{minutes}:{seconds:02}")
+    }
+}
+
+/// Frees `data` from `llamp_skin_blit_main`. `len` is the returned length.
+#[no_mangle]
+pub extern "C" fn llamp_image_free(data: *mut u8, len: usize) {
+    if data.is_null() || len == 0 {
+        return;
+    }
+    unsafe { drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(data, len))) };
+}
+
+#[repr(C)]
+pub struct LlampControl {
+    pub id: u32,
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+    /// Static string. The caller does not free it.
+    pub label: *const c_char,
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_control_count() -> u32 {
+    llamp_skin::controls().len() as u32
+}
+
+/// A null label means `index` is out of range.
+#[no_mangle]
+pub extern "C" fn llamp_control_at(index: u32) -> LlampControl {
+    let Some(control) = llamp_skin::controls().get(index as usize).copied() else {
+        return LlampControl {
+            id: 0,
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+            label: std::ptr::null(),
+        };
+    };
+    let rect = llamp_skin::control_rect(control);
+    LlampControl {
+        id: control as u32,
+        x: rect.x,
+        y: rect.y,
+        w: rect.w,
+        h: rect.h,
+        label: label_ptr(control as u32),
+    }
+}
+
+#[repr(C)]
+pub struct LlampPoint {
+    pub x: i32,
+    pub y: i32,
+}
+
+/// `mode` 0 is the normal mask. `mode` 1 is the window-shade mask.
+#[no_mangle]
+pub extern "C" fn llamp_region_polygon_count(mode: u32) -> u32 {
+    let Ok(slot) = skin_slot().lock() else { return 0 };
+    let Some(skin) = slot.current() else { return 0 };
+    polygons(skin, mode).len() as u32
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_region_point_count(mode: u32, polygon: u32) -> u32 {
+    let Ok(slot) = skin_slot().lock() else { return 0 };
+    let Some(skin) = slot.current() else { return 0 };
+    polygons(skin, mode)
+        .get(polygon as usize)
+        .map(|poly| poly.points.len() as u32)
+        .unwrap_or(0)
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_region_point(mode: u32, polygon: u32, index: u32) -> LlampPoint {
+    let Ok(slot) = skin_slot().lock() else { return LlampPoint { x: 0, y: 0 } };
+    let Some(skin) = slot.current() else { return LlampPoint { x: 0, y: 0 } };
+    polygons(skin, mode)
+        .get(polygon as usize)
+        .and_then(|poly| poly.points.get(index as usize).copied())
+        .map(|(x, y)| LlampPoint { x, y })
+        .unwrap_or(LlampPoint { x: 0, y: 0 })
+}
+
+/// Playback snapshot. Returned by value. The caller does not free it.
+///
+/// Does not wait. Takes no lock. The audio callback does not publish this
+/// struct; it only increments a frame counter the poll reads.
+#[repr(C)]
+pub struct LlampPlayback {
+    pub position_frames: u64,
+    pub duration_frames: u64,
+    pub sample_rate: u32,
+    pub source_channels: u16,
+    pub transport: u8,
+    pub shuffle: u8,
+    pub repeat_mode: u8,
+    pub time_remaining: u8,
+    pub vis_mode: u8,
+    pub always_on_top: u8,
+    pub double_size: u8,
+    pub volume_ppm: u16,
+    pub balance_ppm: u16,
+    pub title_len: u16,
+    pub title: [u8; 256],
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_playback_poll() -> LlampPlayback {
+    snapshot_to_c(session().poll())
+}
+
+/// Sets duration and title for a session that does not open a device.
+/// `title` may be null. A missing NUL is truncated at `TITLE_CAP`.
+#[no_mangle]
+pub extern "C" fn llamp_session_configure(sample_rate: u32, frames: u64, channels: u16, title: *const c_char) {
+    let owned = cstr_owned(title);
+    session().configure(sample_rate, frames, channels, &owned);
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_transport_toggle_play() {
+    session().toggle_play();
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_transport_seek_by(frames: i32) {
+    session().seek_by(frames);
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_transport_press(id: u32) {
+    session().press(id);
+}
+
+/// Seek (id 15) jumps to `duration * ppm / 1000`. Volume and balance are visual only and do not apply a gain law.
+#[no_mangle]
+pub extern "C" fn llamp_transport_set_slider(id: u32, ppm: u16) {
+    session().set_slider(id, ppm);
+}
+
+/// Retains every file in `refs_dir` and loops `track` through the output.
+/// Oscilloscope stays the vis mode (0). Spectrum bars are not drawn.
+/// The callback still only `fetch_add`s. Returns `LLAMP_OK` or `LLAMP_ERR_INVALID`.
+#[no_mangle]
+pub extern "C" fn llamp_budget_prepare(track: *const c_char, refs_dir: *const c_char) -> i32 {
+    let track = cstr_path(track);
+    let refs_dir = cstr_path(refs_dir);
+    let (Some(track), Some(refs_dir)) = (track, refs_dir) else {
+        return LLAMP_ERR_INVALID;
+    };
+    if session().retain_references(Path::new(&refs_dir)).is_err() {
+        return LLAMP_ERR_INVALID;
+    }
+    if session().start_loop(Path::new(&track)).is_err() {
+        return LLAMP_ERR_INVALID;
+    }
+    LLAMP_OK
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_reference_count() -> u32 {
+    session().reference_count() as u32
+}
+
+fn cstr_path(ptr: *const c_char) -> Option<String> {
+    if ptr.is_null() {
+        return None;
+    }
+    Some(unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned())
+}
+
+fn image_from(rgba: Vec<u8>, width: u32, height: u32) -> LlampImage {
+    let len = rgba.len();
+    let data = Box::into_raw(rgba.into_boxed_slice()) as *mut u8;
+    LlampImage { data, width, height, len }
+}
+
+fn polygons(skin: &llamp_skin::Skin, mode: u32) -> &[llamp_skin::Polygon] {
+    match mode {
+        1 => &skin.regions.window_shade,
+        _ => &skin.regions.normal,
+    }
+}
+
+fn snapshot_to_c(snap: PlaybackSnapshot) -> LlampPlayback {
+    LlampPlayback {
+        position_frames: snap.position_frames,
+        duration_frames: snap.duration_frames,
+        sample_rate: snap.sample_rate,
+        source_channels: snap.source_channels,
+        transport: snap.transport,
+        shuffle: snap.shuffle,
+        repeat_mode: snap.repeat_mode,
+        time_remaining: snap.time_remaining,
+        vis_mode: snap.vis_mode,
+        always_on_top: snap.always_on_top,
+        double_size: snap.double_size,
+        volume_ppm: snap.volume_ppm,
+        balance_ppm: snap.balance_ppm,
+        title_len: snap.title_len,
+        title: snap.title,
+    }
+}
+
+fn cstr_owned(title: *const c_char) -> Vec<u8> {
+    if title.is_null() {
+        return Vec::new();
+    }
+    unsafe { CStr::from_ptr(title) }.to_bytes().to_vec()
 }

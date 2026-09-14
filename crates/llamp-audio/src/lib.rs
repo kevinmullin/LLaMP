@@ -6,6 +6,7 @@ pub mod eq;
 pub mod gapless;
 pub mod graph;
 pub mod limiter;
+pub mod live;
 pub mod opus;
 pub mod output;
 pub mod pcm;

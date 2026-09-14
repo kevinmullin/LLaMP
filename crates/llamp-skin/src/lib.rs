@@ -14,7 +14,7 @@ use std::process::ExitCode;
 
 use sha2::{Digest, Sha256};
 
-pub use blit::scale_nearest;
+pub use blit::{scale_nearest, Display};
 pub use bmp::decode_bmp;
 pub use config::default_vis_colors;
 
@@ -118,6 +118,7 @@ pub enum Sprite {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
 pub enum Control {
     Titlebar,
     Minimize,
@@ -293,12 +294,28 @@ pub fn blit_main(skin: &Skin) -> Vec<u8> {
     blit::blit_main(skin)
 }
 
+pub fn blit_display(skin: &Skin, display: Display<'_>) -> Vec<u8> {
+    blit::blit_display(skin, display)
+}
+
 pub fn write_golden_png(rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
     png_io::write_golden_png(rgba, width, height)
 }
 
 pub fn read_golden_png(bytes: &[u8]) -> Result<GoldenPng, String> {
     png_io::read_golden_png(bytes)
+}
+
+pub fn controls() -> &'static [Control] {
+    layout::controls()
+}
+
+pub fn control_label(control: Control) -> &'static str {
+    layout::control_label(control)
+}
+
+pub fn control_from_id(id: u32) -> Option<Control> {
+    layout::control_from_id(id)
 }
 
 pub fn control_rect(control: Control) -> Rect {

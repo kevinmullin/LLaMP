@@ -23,3 +23,5 @@ jobs:
         run: |
           shells/macos/build-xcframework.sh
           swift test --package-path shells/macos
+      - name: Phase 3 launch-to-window and bundle size
+        run: shells/macos/scripts/phase3-budgets.sh

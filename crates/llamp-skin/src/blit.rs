@@ -3,6 +3,66 @@
 use crate::layout::{self, Slice};
 use crate::{Skin, MAIN_HEIGHT, MAIN_WIDTH};
 
+/// Idle defaults. A display blit with these values is `blit_main`.
+pub struct Display<'a> {
+    pub time: &'a str,
+    pub marquee: &'a str,
+    pub marquee_skip: usize,
+    pub volume_ppm: u16,
+    pub balance_ppm: u16,
+    /// 0 is the fixture seek-thumb origin. Travel is the seek-bar slice minus the thumb slice.
+    pub seek_ppm: u16,
+    /// Latest mono samples, newest at the end. `None` leaves the pane unpainted.
+    /// Painting uses the fixture vis-pane rect. It does not invent a bar count.
+    pub scope: Option<&'a [f32]>,
+}
+
+impl Default for Display<'static> {
+    fn default() -> Self {
+        Self {
+            time: layout::TIME_TEXT,
+            marquee: layout::MARQUEE_TEXT,
+            marquee_skip: 0,
+            volume_ppm: 0,
+            balance_ppm: 500,
+            seek_ppm: 0,
+            scope: None,
+        }
+    }
+}
+
+pub fn blit_display(skin: &Skin, display: Display<'_>) -> Vec<u8> {
+    let mut buf = blit_main(skin);
+    if display.time == layout::TIME_TEXT
+        && display.marquee == layout::MARQUEE_TEXT
+        && display.marquee_skip == 0
+        && display.volume_ppm == 0
+        && display.balance_ppm == 500
+        && display.seek_ppm == 0
+        && display.scope.is_none()
+    {
+        return buf;
+    }
+    let time_box = layout::control_rect(crate::Control::Time);
+    stamp_text(&mut buf, skin, display.time, time_box, 9, true);
+    let marquee = layout::control_rect(crate::Control::Marquee);
+    let skipped: String = display.marquee.chars().skip(display.marquee_skip).collect();
+    stamp_text(&mut buf, skin, &skipped, marquee, layout::GLYPH_CELL.0, false);
+    stamp_thumb(&mut buf, skin, true, display.volume_ppm);
+    stamp_thumb(&mut buf, skin, false, display.balance_ppm);
+    stamp_along(
+        &mut buf,
+        skin,
+        crate::Sprite::SeekBar,
+        crate::Sprite::SeekThumb,
+        display.seek_ppm,
+    );
+    if let Some(samples) = display.scope {
+        stamp_scope(&mut buf, skin, samples);
+    }
+    buf
+}
+
 pub fn blit_main(skin: &Skin) -> Vec<u8> {
     let mut buf = vec![0u8; MAIN_WIDTH as usize * MAIN_HEIGHT as usize * 4];
     for slice in layout::slices() {
@@ -49,6 +109,139 @@ pub fn scale_nearest(src: &[u8], width: u32, height: u32, factor: u32) -> Vec<u8
         }
     }
     out
+}
+
+fn stamp_text(
+    buf: &mut [u8],
+    skin: &Skin,
+    text: &str,
+    bounds: crate::Rect,
+    advance: u32,
+    digits: bool,
+) {
+    for (i, ch) in text.chars().enumerate() {
+        let dest_x = bounds.x + i as u32 * advance;
+        if dest_x >= bounds.x + bounds.w {
+            break;
+        }
+        if digits {
+            let Some(sprite) = layout::digit_sprite(ch) else { continue };
+            let Some(slice) = layout::slices().iter().find(|slice| slice.sprite == sprite) else {
+                continue;
+            };
+            stamp_clipped(
+                skin,
+                buf,
+                slice,
+                crate::Rect { x: dest_x, y: bounds.y, w: slice.src.w, h: slice.src.h },
+                bounds,
+            );
+        } else if let Some((_, rect)) = skin.glyphs.iter().find(|(glyph, _)| *glyph == ch) {
+            stamp_rect_clipped(skin, buf, *rect, dest_x, bounds.y, bounds);
+        }
+    }
+}
+
+/// Oscilloscope into the fixture vis pane. One column per pane pixel, not a bar count.
+/// Background is viscolor 0, a static sparse grid is 1, the plot is 18.
+/// Indices 19–22 and peak-hold 23 stay unused until a golden locks them.
+fn stamp_scope(buf: &mut [u8], skin: &Skin, samples: &[f32]) {
+    let pane = layout::control_rect(crate::Control::VisPane);
+    let bg = skin.vis_colors[0];
+    let dot = skin.vis_colors[1];
+    let plot = skin.vis_colors[18];
+    for y in 0..pane.h {
+        for x in 0..pane.w {
+            put(buf, pane.x + x, pane.y + y, bg);
+        }
+    }
+    // Not fixture-locked. Not a spectrum bar width.
+    const SPARSE_DOT_PITCH: u32 = 8;
+    for y in (0..pane.h).step_by(SPARSE_DOT_PITCH as usize) {
+        for x in (0..pane.w).step_by(SPARSE_DOT_PITCH as usize) {
+            put(buf, pane.x + x, pane.y + y, dot);
+        }
+    }
+    let columns = pane.w as usize;
+    let start = samples.len().saturating_sub(columns);
+    let mid = pane.h as f32 / 2.0;
+    for x in 0..pane.w {
+        let sample = samples.get(start + x as usize).copied().unwrap_or(0.0).clamp(-1.0, 1.0);
+        let y = (mid - sample * (mid - 0.5)).round() as i32;
+        let y = y.clamp(0, pane.h as i32 - 1) as u32;
+        put(buf, pane.x + x, pane.y + y, plot);
+    }
+}
+
+fn put(buf: &mut [u8], x: u32, y: u32, color: crate::Rgb) {
+    if x >= MAIN_WIDTH || y >= MAIN_HEIGHT {
+        return;
+    }
+    let di = ((y * MAIN_WIDTH + x) * 4) as usize;
+    buf[di] = color.r;
+    buf[di + 1] = color.g;
+    buf[di + 2] = color.b;
+    buf[di + 3] = 255;
+}
+
+fn stamp_thumb(buf: &mut [u8], skin: &Skin, volume: bool, ppm: u16) {
+    let (track_sprite, thumb_sprite) = if volume {
+        (crate::Sprite::VolumeTrack, crate::Sprite::VolumeThumb)
+    } else {
+        (crate::Sprite::BalanceTrack, crate::Sprite::BalanceThumb)
+    };
+    stamp_along(buf, skin, track_sprite, thumb_sprite, ppm);
+}
+
+fn stamp_along(buf: &mut [u8], skin: &Skin, track_sprite: crate::Sprite, thumb_sprite: crate::Sprite, ppm: u16) {
+    let Some(track) = layout::slices().iter().find(|slice| slice.sprite == track_sprite) else {
+        return;
+    };
+    let Some(thumb) = layout::slices().iter().find(|slice| slice.sprite == thumb_sprite) else {
+        return;
+    };
+    let Some(track_dest) = track.blit else { return };
+    let Some(thumb_dest) = thumb.blit else { return };
+    stamp(skin, buf, track, track_dest);
+    let travel = track_dest.w.saturating_sub(thumb_dest.w);
+    let x = track_dest.x + (u32::from(ppm.min(1000)) * travel) / 1000;
+    stamp(
+        skin,
+        buf,
+        thumb,
+        crate::Rect { x, y: thumb_dest.y, w: thumb_dest.w, h: thumb_dest.h },
+    );
+}
+
+fn stamp_clipped(skin: &Skin, buf: &mut [u8], slice: &Slice, dest: crate::Rect, bounds: crate::Rect) {
+    let Some(src) = skin.sprite(slice.sprite) else { return };
+    stamp_rect_clipped(skin, buf, src, dest.x, dest.y, bounds);
+}
+
+fn stamp_rect_clipped(skin: &Skin, buf: &mut [u8], src: crate::Rect, dest_x: u32, dest_y: u32, bounds: crate::Rect) {
+    for y in 0..src.h {
+        for x in 0..src.w {
+            let dx = dest_x + x;
+            let dy = dest_y + y;
+            if dx < bounds.x || dy < bounds.y || dx >= bounds.x + bounds.w || dy >= bounds.y + bounds.h {
+                continue;
+            }
+            let ax = src.x + x;
+            let ay = src.y + y;
+            if ax >= skin.atlas_width || ay >= skin.atlas_height {
+                continue;
+            }
+            let si = ((ay * skin.atlas_width + ax) * 4) as usize;
+            if skin.atlas[si + 3] == 0 {
+                continue;
+            }
+            if dx >= MAIN_WIDTH || dy >= MAIN_HEIGHT {
+                continue;
+            }
+            let di = ((dy * MAIN_WIDTH + dx) * 4) as usize;
+            buf[di..di + 4].copy_from_slice(&skin.atlas[si..si + 4]);
+        }
+    }
 }
 
 fn blit_string(
