@@ -290,11 +290,35 @@ impl Library {
     }
 
     pub fn import_m3u8(&self, path: &Path) -> Result<(), String> {
-        m3u8::import(&self.lock()?.conn, path)
+        m3u8::import_m3u8(&self.lock()?.conn, path)
     }
 
     pub fn export_m3u8(&self, path: &Path) -> Result<(), String> {
-        m3u8::export(&self.lock()?.conn, path)
+        m3u8::export_m3u8(&self.lock()?.conn, path)
+    }
+
+    pub fn import_m3u(&self, path: &Path) -> Result<(), String> {
+        m3u8::import_m3u(&self.lock()?.conn, path)
+    }
+
+    pub fn export_m3u(&self, path: &Path) -> Result<(), String> {
+        m3u8::export_m3u(&self.lock()?.conn, path)
+    }
+
+    pub fn import_pls(&self, path: &Path) -> Result<(), String> {
+        m3u8::import_pls(&self.lock()?.conn, path)
+    }
+
+    pub fn export_pls(&self, path: &Path) -> Result<(), String> {
+        m3u8::export_pls(&self.lock()?.conn, path)
+    }
+
+    pub fn import_xspf(&self, path: &Path) -> Result<(), String> {
+        m3u8::import_xspf(&self.lock()?.conn, path)
+    }
+
+    pub fn export_xspf(&self, path: &Path) -> Result<(), String> {
+        m3u8::export_xspf(&self.lock()?.conn, path)
     }
 
     pub fn set_artwork_cap(&self, bytes: u64) {

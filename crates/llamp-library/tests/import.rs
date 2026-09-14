@@ -230,6 +230,79 @@ fn m3u8_round_trip_keeps_order_and_paths_as_written() {
 }
 
 #[test]
+fn m3u_pls_xspf_round_trip_keeps_order_and_paths_as_written() {
+    let root = scratch("playlists");
+    let lib = Library::open(&root.join("library.sqlite")).expect("open");
+    let paths = ["/abs/one.mp3", "rel/two.mp3"];
+
+    let m3u = root.join("list.m3u");
+    fs::write(&m3u, "#EXTM3U\n#EXTINF:1,First\n/abs/one.mp3\nrel/two.mp3\n").expect("m3u");
+    lib.import_m3u(&m3u).expect("import m3u");
+    let out_m3u = root.join("out.m3u");
+    lib.export_m3u(&out_m3u).expect("export m3u");
+    assert_eq!(hash_paths(&out_m3u), paths);
+    assert!(!fs::read_to_string(&out_m3u).expect("m3u text").contains("Application Support"));
+
+    let pls = root.join("list.pls");
+    fs::write(
+        &pls,
+        "[playlist]\nNumberOfEntries=2\nFile1=/abs/one.mp3\nTitle1=One\nFile2=rel/two.mp3\nVersion=2\n",
+    )
+    .expect("pls");
+    lib.import_pls(&pls).expect("import pls");
+    let out_pls = root.join("out.pls");
+    lib.export_pls(&out_pls).expect("export pls");
+    assert_eq!(pls_paths(&out_pls), paths);
+
+    let xspf = root.join("list.xspf");
+    fs::write(
+        &xspf,
+        "<playlist><trackList><track><location>/abs/one.mp3</location></track><track><location>rel/two.mp3</location></track></trackList></playlist>\n",
+    )
+    .expect("xspf");
+    lib.import_xspf(&xspf).expect("import xspf");
+    let out_xspf = root.join("out.xspf");
+    lib.export_xspf(&out_xspf).expect("export xspf");
+    assert_eq!(xspf_paths(&out_xspf), paths);
+    assert!(!fs::read_to_string(&out_xspf).expect("xspf text").contains("Application Support"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+fn hash_paths(path: &std::path::Path) -> Vec<String> {
+    fs::read_to_string(path)
+        .expect("read")
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn pls_paths(path: &std::path::Path) -> Vec<String> {
+    let mut files = Vec::new();
+    for line in fs::read_to_string(path).expect("pls").lines() {
+        if let Some(rest) = line.strip_prefix("File") {
+            if let Some((_, value)) = rest.split_once('=') {
+                files.push(value.to_string());
+            }
+        }
+    }
+    files
+}
+
+fn xspf_paths(path: &std::path::Path) -> Vec<String> {
+    let text = fs::read_to_string(path).expect("xspf");
+    let mut paths = Vec::new();
+    let mut rest = text.as_str();
+    while let Some(start) = rest.find("<location>") {
+        rest = &rest[start + "<location>".len()..];
+        let end = rest.find("</location>").expect("close");
+        paths.push(rest[..end].to_string());
+        rest = &rest[end + "</location>".len()..];
+    }
+    paths
+}
+
+#[test]
 fn artwork_eviction_deletes_the_cache_file_not_the_audio() {
     let root = scratch("art");
     let music = root.join("music");

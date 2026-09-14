@@ -184,7 +184,7 @@ Exit:
 - Grant a folder, search with FTS5, enqueue, write a tag, relaunch, read the tag back. The file on disk is the file the user granted, not a copy.
 - A v1 fixture database upgrades to v2 without losing rows.
 - A referenced file deleted in Finder stays in the library as missing. The row is not dropped.
-- M3U8 export then import round-trips paths as written, and order.
+- M3U, M3U8, PLS, and XSPF export then import round-trip paths as written, and order.
 
 Demo: search the granted folder and enqueue a track without duplicating it on disk.
 
