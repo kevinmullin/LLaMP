@@ -13,9 +13,7 @@ Done locally on 2026-09-13:
 - `llamp_buffer` returns a 64 KiB block. `llamp_buffer_free` is the documented free. Test: `crates/llamp-ffi/tests/buffer.rs`. Header regenerated with cbindgen 0.29.4.
 - `llamp_counter_publish` is an atomic increment and takes no lock. `llamp_counter_poll` loads it and does not wait. Swift `FrameCounter.poll` calls that load. Test: `shells/macos/Tests/LLaMPFFITests/CounterPollTests.swift` polls at 60 Hz for one second. The green run above does not include the buffer or the counter.
 
-Phase 0 exit is not met:
-
-- There is no smoke window.
+Phase 0 smoke-window exit is superseded (PLAN): the phase 3 main window is the first AppKit surface. A separate smoke window was not built.
 
 ## 1a — decode
 
@@ -89,7 +87,7 @@ Done locally on 2026-09-14. Not a phase-4 exit. The window opens.
 
 ## 5 — playlist, library, browser
 
-Not a phase-5 exit. Intra-row Mixed is superseded: any missing glyph in the visible set promotes the whole list to CoreText. `docs/PLAN.md` phase 5a history was not rewritten.
+Not a phase-5 exit. Intra-row Mixed is superseded: any missing glyph in the visible set promotes the whole list to CoreText. `docs/PLAN.md` phase 5a exit now states that rule.
 
 - Reference-in-place. A grant does not copy the file. Finder-delete marks the row missing and keeps it. Remove-from-library drops the row and does not delete the audio. `import.rs` passed those. Grant, FTS5 search, enqueue of the hit path onto `playlist_items`, tag write, reopen, and tag read-back are `grant_search_enqueue_tag_survives_reopen_on_the_granted_file`. The enqueued path is the granted file. FFI: `llamp_library_open`, `llamp_library_grant`, `llamp_library_search`, `llamp_library_hit_path`, `llamp_library_enqueue_hit`, `llamp_playlist_enqueue`.
 - FTS5 tokenizer is `unicode61`. Bundled SQLite returned `Борис` and `周杰伦`. Not switched to `trigram`.
@@ -106,3 +104,16 @@ Not a phase-5 exit. Intra-row Mixed is superseded: any missing glyph in the visi
 - Four windows snap as one group (10 px snap, 12 px undock). The pair path is unchanged when playlist and browser are absent. `BrowserWindowTests.testFourWindowsSnapAsOneGroup` moved main and EQ to x=3 and playlist and browser to x=278.
 
 `swift test --package-path shells/macos --filter 'PlaylistWindowTests|BrowserWindowTests|EqWindowTests'`: 9 tests, 0 failures.
+
+## Carry-forward debt, pre-phase-6
+
+Closed before phase 6. Green run on `34747c1`: https://github.com/kevinmullin/LLaMP/actions/runs/34868736118.
+
+| Id | Decision | Proving artifact | Commit |
+| --- | --- | --- | --- |
+| D1 | `Library::open` applies 001 then 002. `user_version` is 2. That is the current schema, not a weakened pin: stopping at 1 would hide tags, grants, FTS, and `playlist_items`. v1 is only a mid-migration fixture. | `crates/llamp-library/tests/referenced.rs` asserts `user_version() == 2`. `migrate_v1.rs` upgrades a v1 fixture. | `61eb640` (`feat: add playlist, library, and browser windows`) |
+| D2 | The C ABI the shell calls for chrome is a composed surface, not a raw atlas plus sprite rectangles. Windows and Linux blit that surface. | ADR 005 amendment 2026-09-14. `docs/ARCHITECTURE.md`. PLAN 13/14. | `b0e9218` (`docs: record the core-composites skin ABI`) |
+| D3 | CI on `macos-26` runs the Swift package tests and the phase 3 budget script, not only the 60 Hz counter poll. | `.github/workflows/ci.yml` lines 22–27 (`Swift package tests`, `Phase 3 bundle size and launch measurement`). No dedicated commit. | none — those steps on `34747c1` |
+| D4 | Fixture-lock `eqmain`, `eq_ex`, `pledit`, `gen`, `genex`. Stamp those slices. Lock goldens including kbps/kHz and spectrum bar width 4. | `docs/spec/skin-atlas.md` Display extras. Goldens `eq-275x116.png`, `playlist-275x116.png`, `gen-275x116.png`, `main-kbps-khz.png`, `vis-spectrum-76x16.png`. `crates/llamp-skin/tests/golden_chrome.rs`. | `49dc53e` (`feat: lock EQ, playlist, and gen atlas origins`) |
+| D5 | Any missing glyph in the visible set promotes the whole list to CoreText at the destination integer scale. `RowFont::Mixed` is gone. Intra-row Mixed is rejected. | `docs/spec/skin-format.md` playlist-list rule. `list_font` / `a_missing_glyph_in_the_visible_set_promotes_the_list`. `testVisibleMissingGlyphPromotesTheList`. | `dd3b9d6` (`feat: promote the playlist list when a glyph is missing`) |
+| D6 | Playlist formats are M3U, M3U8, PLS, and XSPF. Paths and order round-trip as written. | ADR 007 already required all four. `m3u_pls_xspf_round_trip_keeps_order_and_paths_as_written` in `crates/llamp-library/tests/import.rs`. PLAN 5b exit. | `78cb4ce` (`feat: round-trip M3U, PLS, and XSPF`) |

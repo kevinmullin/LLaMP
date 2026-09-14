@@ -77,6 +77,9 @@ These are under 80% confidence. Do not invent an API to close them. Each has an 
 | Classic EQ AUTO button meaning | 4 | Written from published behavior notes, not Winamp source. Until then the button is present and documented as “behavior pending”, not a guessed function. |
 | `pledit.bmp` vertical step is 29 px, and the full sprite atlas coordinates | 2 | A fixture `.wsz` (not checked in) renders to the golden PNG. Wrong coordinates fail that test. |
 | 76×16 bar geometry | 2–3 | Golden image locks bar width. Do not hard-code “19 bars” before that image exists. |
+| Live kbps, kHz, and spectrum on `llamp_skin_blit_display` | 7 | Origins are locked in [skin-atlas.md](spec/skin-atlas.md) (Display extras). The live FFI still passes `kbps: 0`, `khz: 0`, `spectrum: None`. Phase 7 already owns the 76×16 pane and must keep it honest (`viscolor.txt`, not a fake spectrum). kbps/kHz ride the same `Display` struct. |
+| Playlist slide-up menus stamp `pledit` sprites | 11 | Add / Rem / Sel / Misc / List still fill `pledit.txt` colors. `pledit.bmp` slices are fixture-locked. Phase 11 is when authored skins must load those slices, not a color rectangle. |
+| SQLite preferences key/value table (ADR 007) | 12 | Volume, ReplayGain preamp, crossfade, last skin, and EQ preset. The table does not exist; EQ presets are `eq-presets.txt`. Do not amend ADR 007 — that line is still the intent. Phase 12 is the notarized store Windows and Linux inherit. |
 | wasmtime WIT host allow-list for declared HTTPS hosts | 6 | Pinned wasmtime version written into [plugin ABI](spec/plugin-abi.md), and a test that an undeclared host is denied. |
 | Sparkle 2 entitlements on macOS 26 hardened runtime | 12 | A notarized build updates itself. Entitlement keys are copied from Sparkle’s then-current docs, not guessed here. |
 | MusicKit catalog from a notarized non-App-Store binary | 10 | Spike writes go or no-go. Local Apple Music library control is the fallback. No scraping. |
@@ -101,7 +104,7 @@ Exit:
 - A unit test asserts the version string matches `CARGO_PKG_VERSION`.
 - A 64 KB dummy buffer is returned and freed with the documented free function. A test fails on leak or double-free.
 - Swift polls a counter at 60 Hz for one second and sees a monotonic value. The publisher takes no lock.
-- No BMP, audio decode, or UI chrome yet, except the smoke window.
+- ~~No BMP, audio decode, or UI chrome yet, except the smoke window.~~ Superseded: the phase 3 main window is the first AppKit surface. A separate smoke window was not built.
 
 Demo: a tiny AppKit window whose title came from Rust and whose icon is the mark at 1× nearest-neighbor.
 
@@ -148,6 +151,8 @@ Exit:
 - Shade height is 14 skin pixels.
 - Phase 3 budgets in the Budgets section pass: launch-to-window 400 ms on developer hardware (CI records `launch_ms` and `painted` and does not fail on them), idle CPU, idle RSS, bundle size.
 
+Deferred (investigation table): live `kbps` / `kHz` / spectrum on `llamp_skin_blit_display` (phase 7); playlist slide-up menus stamp `pledit` sprites (phase 11).
+
 Demo: the main window, movable, playing a file.
 
 ### 4 — EQ window
@@ -165,15 +170,15 @@ Demo: EQ snapped to the main window, a band boosted, no zipper click.
 
 ### 5a — Playlist window
 
-Scope: playlist window. Resize in 25 px horizontal and 29 px vertical steps from 275×116, with Add / Rem / Sel / Misc / List. Shade and dock. Playlist uses `text.bmp` when every glyph in the row exists; otherwise that row uses CoreText with `pledit.txt` colors. The mixed-typography rule lives here, not in 5c.
+Scope: playlist window. Resize in 25 px horizontal and 29 px vertical steps from 275×116, with Add / Rem / Sel / Misc / List. Shade and dock. Playlist uses `text.bmp` when every glyph in the visible set exists; otherwise the whole visible list uses CoreText with `pledit.txt` colors. The list-font rule lives here, not in 5c.
 
 Exit:
 
 - Resize snaps to the 25/29 increments; a free drag that lands mid-step is rejected.
-- A fixture row that mixes a glyph present in `text.bmp` and a character absent from it renders the missing character with CoreText, not a blank box, so the seam is visible before the library exists.
+- A missing glyph in the visible set promotes the whole list to CoreText at the destination integer scale. Do not mix bitmap and CoreText in one row or across visible rows. This supersedes the intra-row Mixed wording (a 5×7 CoreText CJK cell is not that character). See [skin-format.md](spec/skin-format.md) (playlist list).
 - Rem removes rows from the playlist or the library. It does not delete the user’s file.
 
-Demo: the playlist window snapped to the main window, with one mixed-font row.
+Demo: the playlist window snapped to the main window, with a list promoted to CoreText when one visible row is missing a glyph.
 
 ### 5b — Library and import
 
@@ -221,6 +226,7 @@ Exit:
 - A test double that sleeps past the frame budget is killed, and the audio callback does not miss a period during that kill.
 - Hidden or occluded visualizer submits no GPU work (test double counters; Instruments is the manual check).
 - The 76×16 pane is unchanged and still uses `viscolor.txt`.
+- `llamp_skin_blit_display` stamps live kbps, kHz, and spectrum at the origins in [skin-atlas.md](spec/skin-atlas.md). It does not hard-code `0` / `None`.
 - The wgpu version the window used is written into [visualizer](spec/visualizer.md).
 - The Milkdrop cost note from the investigation table is written before this phase treats [ADR 010](adr/010-milkdrop.md) as settled. It does not add `.milk` loading.
 
@@ -273,6 +279,7 @@ Scope: three original skins (near-classic grey, dark, high-contrast), switcher, 
 Exit:
 
 - Each default skin loads, shades, and double-sizes.
+- Playlist Add / Rem / Sel / Misc / List slide-ups stamp `pledit` sprites. They do not fill a `pledit.txt` color rectangle.
 - High-contrast CoreText surfaces meet the contrast ratio in [TESTING.md](TESTING.md).
 - Switching skins frees the previous atlas (a test asserts the old skin id is gone).
 - Import of a user-owned `.wsz` from outside the bundle works. The bundle contains only the three originals.
@@ -291,6 +298,7 @@ Exit:
 - `com.apple.security.cs.disable-library-validation` is absent.
 - Finder and About show the llama. A loaded third-party skin does not contain it.
 - VoiceOver rotor lists transport, seek, volume, and each window’s primary list.
+- SQLite preferences key/value table holds volume, ReplayGain preamp, crossfade, last skin, and EQ preset ([ADR 007](adr/007-library-database.md)). `eq-presets.txt` is gone. Do not amend the ADR.
 
 Demo: the ship candidate. Windows work does not start before this exit is met.
 
