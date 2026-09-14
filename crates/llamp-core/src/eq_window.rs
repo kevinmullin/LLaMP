@@ -7,8 +7,7 @@ use std::path::{Path, PathBuf};
 
 use llamp_audio::{drag_band, drag_preamp, set_eq_enabled};
 
-const SNAP: i32 = 10;
-const UNDOCK2: i32 = 12 * 12;
+use crate::dock::{self, UNDOCK2};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Frame {
@@ -260,15 +259,15 @@ impl EqWindow {
         } else {
             self.move_one(which, dx, dy);
             match which {
-                Which::Eq => snap(&mut self.eq, self.main),
-                Which::Main => snap(&mut self.main, self.eq),
+                Which::Eq => dock::snap(&mut self.eq, self.main),
+                Which::Main => dock::snap(&mut self.main, self.eq),
             }
         }
         self.move_now()
     }
 
     pub fn end_drag(&mut self) -> DockMove {
-        if touching(self.main, self.eq) {
+        if dock::touching(self.main, self.eq) {
             self.docked = true;
         }
         self.accum_x = 0;
@@ -421,42 +420,6 @@ fn parse_gains(rest: &str) -> Result<Gains, String> {
     let mut bands = [0i16; 10];
     bands.copy_from_slice(&parts[1..]);
     Ok(Gains { preamp: parts[0], bands })
-}
-
-fn snap(mover: &mut Frame, other: Frame) {
-    if (mover.y - (other.y + other.h)).abs() <= SNAP {
-        mover.y = other.y + other.h;
-    } else if ((mover.y + mover.h) - other.y).abs() <= SNAP {
-        mover.y = other.y - mover.h;
-    }
-    if (mover.x - (other.x + other.w)).abs() <= SNAP {
-        mover.x = other.x + other.w;
-    } else if ((mover.x + mover.w) - other.x).abs() <= SNAP {
-        mover.x = other.x - mover.w;
-    }
-    if vertically_adjacent(*mover, other) && (mover.x - other.x).abs() <= SNAP {
-        mover.x = other.x;
-    }
-    if horizontally_adjacent(*mover, other) && (mover.y - other.y).abs() <= SNAP {
-        mover.y = other.y;
-    }
-}
-
-fn touching(a: Frame, b: Frame) -> bool {
-    (vertically_adjacent(a, b) && overlaps(a.x, a.w, b.x, b.w))
-        || (horizontally_adjacent(a, b) && overlaps(a.y, a.h, b.y, b.h))
-}
-
-fn vertically_adjacent(a: Frame, b: Frame) -> bool {
-    a.y + a.h == b.y || b.y + b.h == a.y
-}
-
-fn horizontally_adjacent(a: Frame, b: Frame) -> bool {
-    a.x + a.w == b.x || b.x + b.w == a.x
-}
-
-fn overlaps(origin: i32, len: i32, other: i32, other_len: i32) -> bool {
-    origin < other + other_len && other < origin + len
 }
 
 #[cfg(test)]

@@ -7,6 +7,8 @@ public final class MainWindow: NSWindow {
     private var shaded = false
     var skinScale = 1
     public var onOpenEqualizer: (() -> Void)?
+    public var onOpenPlaylist: (() -> Void)?
+    public var onOpenBrowser: (() -> Void)?
     private var marqueeSkip: UInt32 = 0
     private var lastPull = ""
     private var displayTimer: Timer?
@@ -87,6 +89,10 @@ public final class MainWindow: NSWindow {
             close()
         case "Equalizer":
             onOpenEqualizer?()
+        case "Playlist":
+            onOpenPlaylist?()
+        case "Eject":
+            onOpenBrowser?()
         case "Minimize":
             miniaturize(nil)
         default:

@@ -106,6 +106,17 @@ typedef struct LlampDock {
   uint8_t group_on_top;
 } LlampDock;
 
+typedef struct LlampGroup {
+  struct LlampFrame main;
+  struct LlampFrame eq;
+  struct LlampFrame playlist;
+  struct LlampFrame browser;
+  uint8_t main_docked;
+  uint8_t eq_docked;
+  uint8_t playlist_docked;
+  uint8_t browser_docked;
+} LlampGroup;
+
 /**
  * NUL-terminated crate version. The caller does not free this pointer.
  */
@@ -274,5 +285,88 @@ struct LlampDock llamp_eq_end_drag(void);
 uint32_t llamp_text_color(void);
 
 uint32_t llamp_text_bg(void);
+
+/**
+ * Opens the library database. Music stays at granted paths.
+ */
+int32_t llamp_library_open(const char *path);
+
+int32_t llamp_library_grant(const char *dir);
+
+uint32_t llamp_library_search(const char *query);
+
+/**
+ * Writes a NUL-terminated granted path. The caller does not get a copy of the audio.
+ */
+int32_t llamp_library_hit_path(uint32_t index, char *out, size_t len);
+
+/**
+ * Enqueues a search hit onto `playlist_items` and the playlist window. Does not copy the file.
+ */
+int32_t llamp_library_enqueue_hit(uint32_t index);
+
+int32_t llamp_playlist_enqueue(const char *path);
+
+/**
+ * Minimum playlist size. Resize is 25×29 from this. A mid-step size is rejected.
+ */
+int32_t llamp_playlist_propose_size(int32_t w, int32_t h);
+
+struct LlampSize llamp_playlist_size(void);
+
+uint32_t llamp_playlist_visible_count(uint32_t len, uint32_t scroll);
+
+/**
+ * Row index, or -1. Arithmetic on the visible window. Does not walk `len`.
+ */
+int32_t llamp_playlist_hit_row(int32_t y, uint32_t scroll, uint32_t len);
+
+/**
+ * 0 = every glyph is `text.bmp`. 1 = every glyph is CoreText. 2 = both in the same row.
+ */
+uint32_t llamp_playlist_row_font(const char *text);
+
+/**
+ * 0 = `text.bmp`. 1 = CoreText. `scalar` is a Unicode code point.
+ */
+uint32_t llamp_playlist_char_font(uint32_t scalar);
+
+uint32_t llamp_browser_row_font(const char *text);
+
+struct LlampSize llamp_browser_size(void);
+
+/**
+ * Loads granted paths into the browser list. Always CoreText. Does not copy audio.
+ */
+uint32_t llamp_browser_load_granted(void);
+
+uint32_t llamp_browser_row_count(void);
+
+/**
+ * Writes a NUL-terminated granted path. The caller does not free it.
+ */
+int32_t llamp_browser_row_path(uint32_t index, char *out, size_t len);
+
+/**
+ * Bitmap row from the loaded atlas. Null data means the shell must use CoreText.
+ */
+struct LlampImage llamp_text_row_blit(const char *text);
+
+/**
+ * One 5×7 `text.bmp` cell. Null data means the shell must use CoreText for this scalar.
+ */
+struct LlampImage llamp_text_char_blit(uint32_t scalar);
+
+struct LlampControl llamp_playlist_button_at(uint32_t index);
+
+void llamp_group_set_frame(uint32_t which, struct LlampFrame frame);
+
+void llamp_group_reset(void);
+
+void llamp_group_begin_drag(void);
+
+struct LlampGroup llamp_group_drag(uint32_t which, int32_t dx, int32_t dy);
+
+struct LlampGroup llamp_group_end_drag(void);
 
 #endif  /* LLAMP_H */

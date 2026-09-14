@@ -9,6 +9,8 @@ rust-version.workspace = true
 [dependencies]
 # ADR 007: rusqlite, bundled SQLite, FTS5 compiled in. The crate has no `fts5` feature.
 rusqlite = { version = "=0.32.1", features = ["bundled"] }
+lofty = "=0.25.2"
+notify = "=6.1.1"
 
 [dev-dependencies]
 rusqlite = { version = "=0.32.1", features = ["bundled"] }

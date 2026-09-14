@@ -86,3 +86,24 @@ Done locally on 2026-09-14. Not a phase-4 exit. The window opens.
 - Presets save and load in a core-owned text file (`eq-presets.txt` under Application Support). The SQLite key/value table from ADR 007 is still phase 5b. A preset load jumps targets; the callback still slews.
 - Snap is 10 skin pixels. Mouse-up docks touching edges. A drag whose travel exceeds 12 skin pixels undocks that window. A docked drag moves both frames. The core tests cover that. The shell applies those deltas. No window-server check of two `NSWindow`s moving together was run.
 - When `supports_eq` is false, sliders and On/Auto do not change audio, the curve is a flat line in `viscolor.txt` index 1, and the caption is `Equalizer does not apply — playback is remote`. There is no device-name field yet, so the unknown-device sentence is the one published. The shell does not branch on a provider name.
+
+## 5 — playlist, library, browser
+
+Not a phase-5 exit. The mixed-row rule looks wrong. `docs/PLAN.md` was not edited.
+
+- Reference-in-place. A grant does not copy the file. Finder-delete marks the row missing and keeps it. Remove-from-library drops the row and does not delete the audio. `import.rs` passed those. Grant, FTS5 search, enqueue of the hit path onto `playlist_items`, tag write, reopen, and tag read-back are `grant_search_enqueue_tag_survives_reopen_on_the_granted_file`. The enqueued path is the granted file. FFI: `llamp_library_open`, `llamp_library_grant`, `llamp_library_search`, `llamp_library_hit_path`, `llamp_library_enqueue_hit`, `llamp_playlist_enqueue`.
+- FTS5 tokenizer is `unicode61`. Bundled SQLite returned `Борис` and `周杰伦`. Not switched to `trigram`.
+- Tags are nullable columns on `tracks`. A write on the granted file survived reopen. No albums or artists tables. No content-hash column. No preferences table. EQ presets stay in the phase-4 text file. The library does not depend on `llamp-audio`.
+- Playlist formats in this slice are M3U8 only. Order and path strings round-trip. M3U, PLS, and XSPF are out. The URL menu item does not fetch. File info has no window.
+- Watch is `notify` on granted folders. An FSEvents path spelled `/private/var` is rewritten onto the grant spelling. A new file inserts. The existing row id is not rewritten. Watch does not start on `open`.
+- Artwork LRU default cap is 512 MiB. The test cap is 100. Eviction deletes the cache file and the row, not the audio. Cache sits beside the database.
+- Schema migrates 001 then 002. `user_version` after `Library::open` is 2. `crates/llamp-library/tests/referenced.rs` pins that. `cargo test --package llamp-library --package llamp-core -- --test-threads=1`: core unit 7, `playlist_window` 6, `import` 7, `migrate_v1` 1, `referenced` 3.
+
+- Playlist is 275×116. Steps are 25 and 29. A mid-step size is rejected and not applied. Row pitch is the locked 7 px `text.bmp` cell. Hit testing is index math on the visible window. A 10,000-entry draw’s accessibility children are the visible rows plus five buttons, not 10,000.
+- Intra-row font: a present `text.bmp` scalar stays bitmap; a missing scalar is CoreText in the same row. Fixture `text.bmp` only inks F, I, X, T, U, R, E, so the mixed row is `F日`, not `A日` (`A` is an empty color-key cell). `a_missing_glyph_is_coretext_inside_a_bitmap_row` locks `row_font("F日") == Mixed`.
+- Screenshot, fixture skin, 4× nearest-neighbor: `/tmp/llamp-mixed-rows-4x.png`. `FIXTURE` is the 5×7 bitmap row. The next row is a white bitmap `F` and a green CoreText `日` in the next 5×7 cell. `日` is not a blank box. The seam is visible. `日` is not readable as that character at 5×7. The 5a exit asked for the seam, not a readable CJK cell.
+- Playlist and browser shade are out. `pledit.bmp`, `gen.bmp`, and `genex.bmp` slices are not fixture-locked and were not invented. Menu chrome is a slide-up in `pledit.txt` colors, not those sprites. The five labels in a 7 px cell are the same unreadability. Browser frame is a fallback fill. Browser rows are always CoreText.
+- The browser lists granted `referenced` paths via `BrowserList::load_granted`. Rows are CoreText, not `text.bmp`. `browser_lists_the_granted_library_in_coretext` and `testBrowserListsGrantedLibraryInCoreText` load a granted `song.wav` and assert the row and the font. Opening the window calls `reloadGranted`.
+- Four windows snap as one group (10 px snap, 12 px undock). The pair path is unchanged when playlist and browser are absent. `BrowserWindowTests.testFourWindowsSnapAsOneGroup` moved main and EQ to x=3 and playlist and browser to x=278.
+
+`swift test --package-path shells/macos --filter 'PlaylistWindowTests|BrowserWindowTests|EqWindowTests'`: 9 tests, 0 failures.

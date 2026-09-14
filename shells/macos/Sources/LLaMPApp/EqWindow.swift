@@ -347,13 +347,30 @@ public final class WindowDock {
     public static let shared = WindowDock()
     public weak var main: MainWindow?
     public weak var equalizer: EqWindow?
+    public weak var playlist: PlaylistWindow?
+    public weak var browser: BrowserWindow?
     private var docked = false
+    private var groupOrigin: NSPoint?
     private var lastMain = Frame(x: 0, y: 0)
     private var lastEq = Frame(x: 0, y: 0)
 
     public func attach(main: MainWindow, equalizer: EqWindow) {
         self.main = main
         self.equalizer = equalizer
+    }
+
+    public func attach(playlist: PlaylistWindow) {
+        self.playlist = playlist
+    }
+
+    public func attach(browser: BrowserWindow) {
+        self.browser = browser
+    }
+
+    public func detachExtras() {
+        playlist = nil
+        browser = nil
+        groupOrigin = nil
     }
 
     public func showEqualizer() {
@@ -383,6 +400,10 @@ public final class WindowDock {
     }
 
     public func track(which: UInt32, event: NSEvent) {
+        if playlist != nil || browser != nil {
+            trackGroup(which: which, event: event)
+            return
+        }
         syncFrames()
         llamp_eq_begin_drag()
         var last = NSEvent.mouseLocation
@@ -413,6 +434,14 @@ public final class WindowDock {
         llamp_eq_set_frames(mainFrame, eqFrame)
         lastMain = Frame(x: 0, y: 0)
         lastEq = Frame(x: dx, y: dy)
+    }
+
+    /// Pair path stays when playlist and browser are absent. This is the four-window path.
+    public func applyGroupDrag(which: UInt32, dx: Int32, dy: Int32) {
+        syncGroup()
+        llamp_group_begin_drag()
+        applyGroup(llamp_group_drag(which, dx, dy))
+        applyGroup(llamp_group_end_drag())
     }
 
     public func refreshLevel(mainOnTop: Bool) {
@@ -448,6 +477,72 @@ public final class WindowDock {
 
     private func currentScale() -> CGFloat {
         CGFloat(max(main?.skinScale ?? 1, 1))
+    }
+
+    private func trackGroup(which: UInt32, event: NSEvent) {
+        syncGroup()
+        llamp_group_begin_drag()
+        var last = NSEvent.mouseLocation
+        let scale = currentScale()
+        while let next = NSApp.nextEvent(matching: [.leftMouseDragged, .leftMouseUp], until: .distantFuture, inMode: .eventTracking, dequeue: true) {
+            let now = NSEvent.mouseLocation
+            let dx = Int32(((now.x - last.x) / scale).rounded())
+            let dy = Int32(((last.y - now.y) / scale).rounded())
+            last = now
+            if dx != 0 || dy != 0 {
+                applyGroup(llamp_group_drag(which, dx, dy))
+            }
+            if next.type == .leftMouseUp { break }
+        }
+        applyGroup(llamp_group_end_drag())
+        _ = event
+    }
+
+    private func syncGroup() {
+        if groupOrigin == nil, let main {
+            groupOrigin = NSPoint(x: main.frame.minX, y: main.frame.maxY)
+        }
+        publish(0, main, fallback: (0, 0, 275, 116))
+        publish(1, equalizer, fallback: (100_000, 100_000, 0, 0))
+        publish(2, playlist, fallback: (100_000, 0, 0, 0))
+        publish(3, browser, fallback: (100_000, 100_000, 0, 0))
+    }
+
+    private func publish(_ which: UInt32, _ window: NSWindow?, fallback: (Int32, Int32, Int32, Int32)) {
+        let frame: LlampFrame
+        if let window, let origin = groupOrigin {
+            let scale = currentScale()
+            frame = LlampFrame(
+                x: Int32(((window.frame.minX - origin.x) / scale).rounded()),
+                y: Int32(((origin.y - window.frame.maxY) / scale).rounded()),
+                w: Int32((window.frame.width / scale).rounded()),
+                h: Int32((window.frame.height / scale).rounded())
+            )
+        } else {
+            frame = LlampFrame(x: fallback.0, y: fallback.1, w: fallback.2, h: fallback.3)
+        }
+        llamp_group_set_frame(which, frame)
+    }
+
+    private func applyGroup(_ group: LlampGroup) {
+        guard let origin = groupOrigin else { return }
+        let scale = currentScale()
+        place(main, group.main, origin, scale)
+        if equalizer != nil { place(equalizer, group.eq, origin, scale) }
+        if playlist != nil { place(playlist, group.playlist, origin, scale) }
+        if browser != nil { place(browser, group.browser, origin, scale) }
+    }
+
+    private func place(_ window: NSWindow?, _ frame: LlampFrame, _ origin: NSPoint, _ scale: CGFloat) {
+        guard let window else { return }
+        let width = CGFloat(frame.w) * scale
+        let height = CGFloat(frame.h) * scale
+        window.setFrame(NSRect(
+            x: origin.x + CGFloat(frame.x) * scale,
+            y: origin.y - CGFloat(frame.y) * scale - height,
+            width: width,
+            height: height
+        ), display: false)
     }
 }
 

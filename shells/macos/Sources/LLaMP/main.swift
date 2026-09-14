@@ -13,6 +13,8 @@ app.run()
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let window = MainWindow()
     private var equalizer: EqWindow?
+    private var playlist: PlaylistWindow?
+    private var browser: BrowserWindow?
     private let started = ContinuousClock.now
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -27,6 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         window.onOpenEqualizer = { [weak self] in self?.openEqualizer() }
+        window.onOpenPlaylist = { [weak self] in self?.openPlaylist() }
+        window.onOpenBrowser = { [weak self] in self?.openBrowser() }
         if let skin = argumentValue("--skin"), let data = try? Data(contentsOf: URL(fileURLWithPath: skin)), !data.isEmpty {
             window.loadSkin(data)
         }
@@ -38,6 +42,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if CommandLine.arguments.contains("--show-eq") {
             openEqualizer()
+        }
+        if CommandLine.arguments.contains("--show-playlist") {
+            openPlaylist()
+        }
+        if CommandLine.arguments.contains("--show-browser") {
+            openBrowser()
         }
         if let track = argumentValue("--play") {
             let refs = argumentValue("--refs") ?? FileManager.default.temporaryDirectory.path
@@ -83,6 +93,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             WindowDock.shared.attach(main: window, equalizer: eq)
         }
         WindowDock.shared.showEqualizer()
+    }
+
+    private func openPlaylist() {
+        if playlist == nil {
+            let window = PlaylistWindow()
+            playlist = window
+            WindowDock.shared.attach(playlist: window)
+        }
+        playlist?.orderFront(nil)
+    }
+
+    private func openBrowser() {
+        if browser == nil {
+            let window = BrowserWindow()
+            browser = window
+            WindowDock.shared.attach(browser: window)
+        }
+        browser?.reloadGranted()
+        browser?.orderFront(nil)
     }
 }
 

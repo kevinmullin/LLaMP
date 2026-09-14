@@ -751,6 +751,489 @@ fn eq_label(label: &str) -> *const c_char {
         .unwrap_or(std::ptr::null())
 }
 
+fn playlist_window() -> &'static Mutex<llamp_core::PlaylistWindow> {
+    static WINDOW: OnceLock<Mutex<llamp_core::PlaylistWindow>> = OnceLock::new();
+    WINDOW.get_or_init(|| Mutex::new(llamp_core::PlaylistWindow::new()))
+}
+
+struct LibrarySlot {
+    lib: Option<llamp_library::Library>,
+    hits: Vec<std::path::PathBuf>,
+}
+
+fn library_slot() -> &'static Mutex<LibrarySlot> {
+    static SLOT: OnceLock<Mutex<LibrarySlot>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(LibrarySlot { lib: None, hits: Vec::new() }))
+}
+
+/// Opens the library database. Music stays at granted paths.
+#[no_mangle]
+pub extern "C" fn llamp_library_open(path: *const c_char) -> i32 {
+    let Some(path) = cstr_path(path) else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Ok(lib) = llamp_library::Library::open(Path::new(&path)) else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Ok(mut slot) = library_slot().lock() else {
+        return LLAMP_ERR_INVALID;
+    };
+    slot.lib = Some(lib);
+    slot.hits.clear();
+    LLAMP_OK
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_library_grant(dir: *const c_char) -> i32 {
+    let Some(dir) = cstr_path(dir) else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Ok(slot) = library_slot().lock() else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Some(lib) = slot.lib.as_ref() else {
+        return LLAMP_ERR_INVALID;
+    };
+    match lib.grant_folder(Path::new(&dir)) {
+        Ok(n) => i32::try_from(n).unwrap_or(LLAMP_ERR_INVALID),
+        Err(_) => LLAMP_ERR_INVALID,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_library_search(query: *const c_char) -> u32 {
+    let query = cstr(query);
+    let Ok(mut slot) = library_slot().lock() else {
+        return 0;
+    };
+    let Some(lib) = slot.lib.as_ref() else {
+        return 0;
+    };
+    let Ok(hits) = lib.search(&query) else {
+        slot.hits.clear();
+        return 0;
+    };
+    slot.hits = hits.into_iter().map(|hit| hit.path).collect();
+    slot.hits.len() as u32
+}
+
+/// Writes a NUL-terminated granted path. The caller does not get a copy of the audio.
+#[no_mangle]
+pub extern "C" fn llamp_library_hit_path(index: u32, out: *mut c_char, len: usize) -> i32 {
+    if out.is_null() || len == 0 {
+        return LLAMP_ERR_INVALID;
+    }
+    let Ok(slot) = library_slot().lock() else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Some(path) = slot.hits.get(index as usize) else {
+        return LLAMP_ERR_INVALID;
+    };
+    let bytes = path.to_string_lossy();
+    let bytes = bytes.as_bytes();
+    if bytes.len() + 1 > len {
+        return LLAMP_ERR_INVALID;
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), out.cast(), bytes.len());
+        *out.add(bytes.len()) = 0;
+    }
+    LLAMP_OK
+}
+
+/// Enqueues a search hit onto `playlist_items` and the playlist window. Does not copy the file.
+#[no_mangle]
+pub extern "C" fn llamp_library_enqueue_hit(index: u32) -> i32 {
+    let Ok(slot) = library_slot().lock() else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Some(path) = slot.hits.get(index as usize).cloned() else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Some(lib) = slot.lib.as_ref() else {
+        return LLAMP_ERR_INVALID;
+    };
+    if lib.enqueue(&path).is_err() {
+        return LLAMP_ERR_INVALID;
+    }
+    drop(slot);
+    let Ok(mut window) = playlist_window().lock() else {
+        return LLAMP_ERR_INVALID;
+    };
+    window.enqueue(path.to_string_lossy().as_ref());
+    LLAMP_OK
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_playlist_enqueue(path: *const c_char) -> i32 {
+    let Some(path) = cstr_path(path) else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Ok(mut window) = playlist_window().lock() else {
+        return LLAMP_ERR_INVALID;
+    };
+    window.enqueue(&path);
+    LLAMP_OK
+}
+
+fn dock_group() -> &'static Mutex<llamp_core::DockGroup> {
+    static GROUP: OnceLock<Mutex<llamp_core::DockGroup>> = OnceLock::new();
+    GROUP.get_or_init(|| Mutex::new(llamp_core::DockGroup::new()))
+}
+
+#[repr(C)]
+pub struct LlampGroup {
+    pub main: LlampFrame,
+    pub eq: LlampFrame,
+    pub playlist: LlampFrame,
+    pub browser: LlampFrame,
+    pub main_docked: u8,
+    pub eq_docked: u8,
+    pub playlist_docked: u8,
+    pub browser_docked: u8,
+}
+
+/// Minimum playlist size. Resize is 25×29 from this. A mid-step size is rejected.
+#[no_mangle]
+pub extern "C" fn llamp_playlist_propose_size(w: i32, h: i32) -> i32 {
+    let Ok(mut window) = playlist_window().lock() else {
+        return LLAMP_ERR_INVALID;
+    };
+    if window.propose_size(w, h).is_err() {
+        return LLAMP_ERR_INVALID;
+    }
+    LLAMP_OK
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_playlist_size() -> LlampSize {
+    let Ok(window) = playlist_window().lock() else {
+        return LlampSize { width: 275, height: 116 };
+    };
+    let (w, h) = window.size();
+    LlampSize { width: w as u32, height: h as u32 }
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_playlist_visible_count(len: u32, scroll: u32) -> u32 {
+    let Ok(window) = playlist_window().lock() else {
+        return 0;
+    };
+    let range = window.visible_range(len as usize, scroll as usize);
+    (range.end - range.start) as u32
+}
+
+/// Row index, or -1. Arithmetic on the visible window. Does not walk `len`.
+#[no_mangle]
+pub extern "C" fn llamp_playlist_hit_row(y: i32, scroll: u32, len: u32) -> i32 {
+    let Ok(window) = playlist_window().lock() else {
+        return -1;
+    };
+    window
+        .hit_row(y, scroll as usize, len as usize)
+        .map(|index| index as i32)
+        .unwrap_or(-1)
+}
+
+/// 0 = every glyph is `text.bmp`. 1 = every glyph is CoreText. 2 = both in the same row.
+#[no_mangle]
+pub extern "C" fn llamp_playlist_row_font(text: *const c_char) -> u32 {
+    match row_mode(&cstr(text)) {
+        llamp_core::RowFont::Bitmap => 0,
+        llamp_core::RowFont::CoreText => 1,
+        llamp_core::RowFont::Mixed => 2,
+    }
+}
+
+/// 0 = `text.bmp`. 1 = CoreText. `scalar` is a Unicode code point.
+#[no_mangle]
+pub extern "C" fn llamp_playlist_char_font(scalar: u32) -> u32 {
+    let Some(ch) = char::from_u32(scalar) else {
+        return 1;
+    };
+    u32::from(matches!(
+        llamp_core::glyph_font(ch, glyph_exists),
+        llamp_core::RowFont::CoreText
+    ))
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_browser_row_font(text: *const c_char) -> u32 {
+    let text = cstr(text);
+    u32::from(matches!(
+        llamp_core::browser_row_font(&text),
+        llamp_core::RowFont::CoreText
+    ))
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_browser_size() -> LlampSize {
+    let (w, h) = llamp_core::browser_size();
+    LlampSize { width: w as u32, height: h as u32 }
+}
+
+fn browser_list() -> &'static Mutex<llamp_core::BrowserList> {
+    static LIST: OnceLock<Mutex<llamp_core::BrowserList>> = OnceLock::new();
+    LIST.get_or_init(|| Mutex::new(llamp_core::BrowserList::new()))
+}
+
+/// Loads granted paths into the browser list. Always CoreText. Does not copy audio.
+#[no_mangle]
+pub extern "C" fn llamp_browser_load_granted() -> u32 {
+    let Ok(slot) = library_slot().lock() else {
+        return 0;
+    };
+    let Some(lib) = slot.lib.as_ref() else {
+        return 0;
+    };
+    let Ok(mut list) = browser_list().lock() else {
+        return 0;
+    };
+    if list.load_granted(lib).is_err() {
+        return 0;
+    }
+    list.rows().len() as u32
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_browser_row_count() -> u32 {
+    let Ok(list) = browser_list().lock() else {
+        return 0;
+    };
+    list.rows().len() as u32
+}
+
+/// Writes a NUL-terminated granted path. The caller does not free it.
+#[no_mangle]
+pub extern "C" fn llamp_browser_row_path(index: u32, out: *mut c_char, len: usize) -> i32 {
+    if out.is_null() || len == 0 {
+        return LLAMP_ERR_INVALID;
+    }
+    let Ok(list) = browser_list().lock() else {
+        return LLAMP_ERR_INVALID;
+    };
+    let Some(path) = list.rows().get(index as usize) else {
+        return LLAMP_ERR_INVALID;
+    };
+    let bytes = path.as_bytes();
+    if bytes.len() + 1 > len {
+        return LLAMP_ERR_INVALID;
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), out.cast(), bytes.len());
+        *out.add(bytes.len()) = 0;
+    }
+    LLAMP_OK
+}
+
+/// Bitmap row from the loaded atlas. Null data means the shell must use CoreText.
+#[no_mangle]
+pub extern "C" fn llamp_text_row_blit(text: *const c_char) -> LlampImage {
+    let text = cstr(text);
+    if row_mode(&text) != llamp_core::RowFont::Bitmap {
+        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+    }
+    let Some(rgba) = blit_bitmap_row(&text) else {
+        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+    };
+    let width = text.chars().count() as u32 * llamp_core::CELL_W as u32;
+    image_from(rgba, width, llamp_core::ROW_H as u32)
+}
+
+/// One 5×7 `text.bmp` cell. Null data means the shell must use CoreText for this scalar.
+#[no_mangle]
+pub extern "C" fn llamp_text_char_blit(scalar: u32) -> LlampImage {
+    let Some(ch) = char::from_u32(scalar) else {
+        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+    };
+    if !glyph_exists(ch) {
+        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+    }
+    let Some(rgba) = blit_bitmap_char(ch) else {
+        return LlampImage { data: std::ptr::null_mut(), width: 0, height: 0, len: 0 };
+    };
+    image_from(rgba, llamp_core::CELL_W as u32, llamp_core::ROW_H as u32)
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_playlist_button_at(index: u32) -> LlampControl {
+    let Ok(window) = playlist_window().lock() else {
+        return LlampControl { id: index, x: 0, y: 0, w: 0, h: 0, label: std::ptr::null() };
+    };
+    let Some((label, x, y, w, h)) = window.menu_button(index as usize) else {
+        return LlampControl { id: index, x: 0, y: 0, w: 0, h: 0, label: std::ptr::null() };
+    };
+    LlampControl {
+        id: index,
+        x: x as u32,
+        y: y as u32,
+        w: w as u32,
+        h: h as u32,
+        label: menu_label(label),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_group_set_frame(which: u32, frame: LlampFrame) {
+    let Ok(mut group) = dock_group().lock() else {
+        return;
+    };
+    let Some(pane) = pane_from(which) else {
+        return;
+    };
+    group.set_frame(pane, frame.x, frame.y, frame.w, frame.h);
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_group_reset() {
+    if let Ok(mut group) = dock_group().lock() {
+        *group = llamp_core::DockGroup::new();
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_group_begin_drag() {
+    if let Ok(mut group) = dock_group().lock() {
+        group.begin_drag();
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_group_drag(which: u32, dx: i32, dy: i32) -> LlampGroup {
+    let Ok(mut group) = dock_group().lock() else {
+        return empty_group();
+    };
+    let Some(pane) = pane_from(which) else {
+        return empty_group();
+    };
+    group_from(group.drag(pane, dx, dy))
+}
+
+#[no_mangle]
+pub extern "C" fn llamp_group_end_drag() -> LlampGroup {
+    let Ok(mut group) = dock_group().lock() else {
+        return empty_group();
+    };
+    group_from(group.end_drag())
+}
+
+fn pane_from(which: u32) -> Option<llamp_core::Pane> {
+    match which {
+        0 => Some(llamp_core::Pane::Main),
+        1 => Some(llamp_core::Pane::Eq),
+        2 => Some(llamp_core::Pane::Playlist),
+        3 => Some(llamp_core::Pane::Browser),
+        _ => None,
+    }
+}
+
+fn group_from(moved: llamp_core::GroupMove) -> LlampGroup {
+    let frame = |pane| {
+        let item = moved.frame(pane);
+        LlampFrame { x: item.x, y: item.y, w: item.w, h: item.h }
+    };
+    LlampGroup {
+        main: frame(llamp_core::Pane::Main),
+        eq: frame(llamp_core::Pane::Eq),
+        playlist: frame(llamp_core::Pane::Playlist),
+        browser: frame(llamp_core::Pane::Browser),
+        main_docked: u8::from(moved.docked(llamp_core::Pane::Main)),
+        eq_docked: u8::from(moved.docked(llamp_core::Pane::Eq)),
+        playlist_docked: u8::from(moved.docked(llamp_core::Pane::Playlist)),
+        browser_docked: u8::from(moved.docked(llamp_core::Pane::Browser)),
+    }
+}
+
+fn empty_group() -> LlampGroup {
+    let zero = || LlampFrame { x: 0, y: 0, w: 0, h: 0 };
+    LlampGroup {
+        main: zero(),
+        eq: zero(),
+        playlist: zero(),
+        browser: zero(),
+        main_docked: 0,
+        eq_docked: 0,
+        playlist_docked: 0,
+        browser_docked: 0,
+    }
+}
+
+fn row_mode(text: &str) -> llamp_core::RowFont {
+    llamp_core::row_font(text, glyph_exists)
+}
+
+fn glyph_exists(ch: char) -> bool {
+    let Ok(slot) = skin_slot().lock() else {
+        return fixture_glyph(ch);
+    };
+    let Some(skin) = slot.current() else {
+        return fixture_glyph(ch);
+    };
+    if skin.glyphs.is_empty() {
+        return fixture_glyph(ch);
+    }
+    skin.glyphs.iter().any(|(glyph, _)| *glyph == ch)
+}
+
+/// Fixture `text.bmp`: index 0 is U+0020, 95 cells, through `~`.
+fn fixture_glyph(ch: char) -> bool {
+    (' '..='~').contains(&ch)
+}
+
+fn blit_bitmap_row(text: &str) -> Option<Vec<u8>> {
+    let slot = skin_slot().lock().ok()?;
+    let skin = slot.current()?;
+    let width = text.chars().count() as u32 * llamp_core::CELL_W as u32;
+    let height = llamp_core::ROW_H as u32;
+    let mut out = vec![0u8; (width * height * 4) as usize];
+    for (index, ch) in text.chars().enumerate() {
+        let (_, rect) = skin.glyphs.iter().find(|(glyph, _)| *glyph == ch)?;
+        copy_atlas(&mut out, width, index as u32 * llamp_core::CELL_W as u32, skin, *rect);
+    }
+    Some(out)
+}
+
+fn blit_bitmap_char(ch: char) -> Option<Vec<u8>> {
+    let slot = skin_slot().lock().ok()?;
+    let skin = slot.current()?;
+    let (_, rect) = skin.glyphs.iter().find(|(glyph, _)| *glyph == ch)?;
+    let mut out = vec![0u8; (llamp_core::CELL_W * llamp_core::ROW_H * 4) as usize];
+    copy_atlas(&mut out, llamp_core::CELL_W as u32, 0, skin, *rect);
+    Some(out)
+}
+
+fn copy_atlas(out: &mut [u8], dest_w: u32, dest_x: u32, skin: &llamp_skin::Skin, rect: llamp_skin::Rect) {
+    let stride = skin.atlas_width;
+    for y in 0..rect.h.min(7) {
+        for x in 0..rect.w.min(5) {
+            let src = ((rect.y + y) * stride + rect.x + x) as usize * 4;
+            let dst = (y * dest_w + dest_x + x) as usize * 4;
+            if src + 4 <= skin.atlas.len() && dst + 4 <= out.len() {
+                out[dst..dst + 4].copy_from_slice(&skin.atlas[src..src + 4]);
+            }
+        }
+    }
+}
+
+fn menu_label(label: &str) -> *const c_char {
+    static LABELS: OnceLock<[CString; 5]> = OnceLock::new();
+    let labels = LABELS.get_or_init(|| {
+        ["Add", "Rem", "Sel", "Misc", "List"].map(|item| CString::new(item).expect("menu label"))
+    });
+    labels
+        .iter()
+        .find(|item| item.as_bytes() == label.as_bytes())
+        .map(|item| item.as_ptr())
+        .unwrap_or(std::ptr::null())
+}
+
+fn cstr(text: *const c_char) -> String {
+    if text.is_null() {
+        return String::new();
+    }
+    unsafe { CStr::from_ptr(text) }.to_string_lossy().into_owned()
+}
+
 fn cstr_owned(title: *const c_char) -> Vec<u8> {
     if title.is_null() {
         return Vec::new();
