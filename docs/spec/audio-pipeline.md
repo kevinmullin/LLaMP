@@ -52,6 +52,8 @@ In order, in the callback, in place on the popped frames:
 5. Limiter.
 6. TPDF dither, only if the device format is integer. Float devices, including the normal CoreAudio path, are not dithered.
 
+Several bands at +12 dB may exceed ±1 after the preamp and the cascade. Boost is allowed to exceed ±1 there. The limiter, not the preamp, brings the peak to −1.0 dBFS.
+
 DSP plugins that are not first-party native do not run here in 1.0. See [ADR 004](../adr/004-plugin-runtime.md).
 
 ### EQ
