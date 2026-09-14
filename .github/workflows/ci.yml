@@ -24,8 +24,4 @@ jobs:
           shells/macos/build-xcframework.sh
           swift test --package-path shells/macos
       - name: Phase 3 bundle size and launch measurement
-        env:
-          # Gross-regression ceiling only. 400 ms is the local gate.
-          # 750 = 1.5 × 444.2 ms on this runner, rounded up.
-          LLAMP_LAUNCH_CI_CEILING_MS: "750"
         run: shells/macos/scripts/phase3-budgets.sh
