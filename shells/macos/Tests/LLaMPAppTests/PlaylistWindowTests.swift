@@ -34,7 +34,7 @@ final class PlaylistWindowTests: XCTestCase {
         XCTAssertNotEqual(children.count, 10_000)
     }
 
-    func testMixedRowsScreenshot() throws {
+    func testVisibleMissingGlyphPromotesTheList() throws {
         let wsz = try Fixture.wsz()
         let loaded = wsz.withUnsafeBytes { raw -> Int32 in
             guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return LLAMP_ERR_INVALID }
@@ -42,34 +42,42 @@ final class PlaylistWindowTests: XCTestCase {
         }
         XCTAssertEqual(loaded, LLAMP_OK)
         XCTAssertEqual("FIXTURE".withCString { llamp_playlist_row_font($0) }, 0)
-        XCTAssertEqual("F日".withCString { llamp_playlist_row_font($0) }, 2)
+        XCTAssertEqual("F日".withCString { llamp_playlist_row_font($0) }, 1)
         XCTAssertEqual(llamp_playlist_char_font(UInt32(UnicodeScalar("F").value)), 0)
         XCTAssertEqual(llamp_playlist_char_font(0x65E5), 1)
+        XCTAssertFalse(PlaylistListView.listFontIsCoreText(["FIXTURE"]))
+        XCTAssertTrue(PlaylistListView.listFontIsCoreText(["FIXTURE", "F日"]))
+
+        let bitmapOnly = PlaylistWindow()
+        bitmapOnly.list.entries = ["FIXTURE"]
+        bitmapOnly.list.textScale = 4
+        let bitmapCapture = BitmapCapture.render(bitmapOnly.list, pixelsWide: 1100, pixelsHigh: 464)
+        let bitmapF = cell(bitmapCapture.rgba, width: 1100, scale: 4, row: 0, col: 0)
 
         let window = PlaylistWindow()
         window.list.entries = ["FIXTURE", "F日"]
+        window.list.textScale = 4
         let capture = BitmapCapture.render(window.list, pixelsWide: 1100, pixelsHigh: 464)
-        let url = URL(fileURLWithPath: "/tmp/llamp-mixed-rows-4x.png")
+        let url = URL(fileURLWithPath: "/tmp/llamp-list-font-4x.png")
         let png = capture.image.representation(using: .png, properties: [:])
         try XCTUnwrap(png).write(to: url)
 
-        let bitmapF = cell(capture.rgba, width: 1100, scale: 4, row: 0, col: 0)
-        let mixedF = cell(capture.rgba, width: 1100, scale: 4, row: 1, col: 0)
-        let missing = cell(capture.rgba, width: 1100, scale: 4, row: 1, col: 1)
-        XCTAssertEqual(mixedF, bitmapF, "first cell must be the text.bmp F")
-        XCTAssertFalse(flat(missing, rgb(llamp_text_bg())), "missing glyph must not be a blank box")
-        XCTAssertNotEqual(missing, mixedF, "the seam must be visible")
+        let promoted = cell(capture.rgba, width: 1100, scale: 4, row: 0, col: 0)
+        let cjk = cell(capture.rgba, width: 1100, scale: 4, row: 1, col: 0)
+        XCTAssertNotEqual(promoted, bitmapF, "a visible missing glyph must not leave a bitmap row")
+        XCTAssertFalse(flat(cjk, rgb(llamp_text_bg())), "CoreText must not be a blank box")
+        XCTAssertNotEqual(cjk, bitmapF)
     }
 
     private func rgb(_ packed: UInt32) -> [UInt8] {
         [UInt8((packed >> 16) & 0xff), UInt8((packed >> 8) & 0xff), UInt8(packed & 0xff)]
     }
 
-    private func cell(_ rgba: [UInt8], width: Int, scale: Int, row: Int, col: Int) -> [UInt8] {
+    private func cell(_ rgba: [UInt8], width: Int, scale: Int, row: Int, col: Int, originX: Int = 0) -> [UInt8] {
         let w = 5 * scale
         let h = 7 * scale
         var out = [UInt8](repeating: 0, count: w * h * 4)
-        let x0 = col * w
+        let x0 = originX * scale + col * w
         let y0 = row * h
         for y in 0..<h {
             for x in 0..<w {

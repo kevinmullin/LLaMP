@@ -322,9 +322,15 @@ uint32_t llamp_playlist_visible_count(uint32_t len, uint32_t scroll);
 int32_t llamp_playlist_hit_row(int32_t y, uint32_t scroll, uint32_t len);
 
 /**
- * 0 = every glyph is `text.bmp`. 1 = every glyph is CoreText. 2 = both in the same row.
+ * 0 = every glyph is `text.bmp`. 1 = CoreText. Any missing glyph promotes the string.
  */
 uint32_t llamp_playlist_row_font(const char *text);
+
+/**
+ * 0 = every visible row is `text.bmp`. 1 = the whole list is CoreText.
+ * `rows` is `count` NUL-terminated UTF-8 strings.
+ */
+uint32_t llamp_playlist_list_font(const char *const *rows, uint32_t count);
 
 /**
  * 0 = `text.bmp`. 1 = CoreText. `scalar` is a Unicode code point.

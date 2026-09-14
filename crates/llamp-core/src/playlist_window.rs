@@ -13,7 +13,6 @@ pub const ROW_H: i32 = 7;
 pub enum RowFont {
     Bitmap,
     CoreText,
-    Mixed,
 }
 
 /// Per scalar. A present `text.bmp` glyph stays bitmap. A missing one is CoreText.
@@ -25,21 +24,27 @@ pub fn glyph_font(ch: char, has_glyph: impl Fn(char) -> bool) -> RowFont {
     }
 }
 
-/// Row summary. Mixed means the seam is inside the row.
+/// One string. Any missing glyph promotes the whole string to CoreText.
 pub fn row_font(text: &str, has_glyph: impl Fn(char) -> bool) -> RowFont {
-    let mut bitmap = false;
-    let mut core = false;
-    for ch in text.chars() {
-        match glyph_font(ch, &has_glyph) {
-            RowFont::Bitmap => bitmap = true,
-            RowFont::CoreText => core = true,
-            RowFont::Mixed => {}
-        }
+    if text.chars().all(|ch| has_glyph(ch)) {
+        RowFont::Bitmap
+    } else {
+        RowFont::CoreText
     }
-    match (bitmap, core) {
-        (_, false) => RowFont::Bitmap,
-        (false, true) => RowFont::CoreText,
-        (true, true) => RowFont::Mixed,
+}
+
+/// Visible set. Any missing glyph in any visible row promotes the whole list.
+pub fn list_font<'a>(
+    visible_rows: impl IntoIterator<Item = &'a str>,
+    has_glyph: impl Fn(char) -> bool,
+) -> RowFont {
+    if visible_rows
+        .into_iter()
+        .all(|text| row_font(text, &has_glyph) == RowFont::Bitmap)
+    {
+        RowFont::Bitmap
+    } else {
+        RowFont::CoreText
     }
 }
 

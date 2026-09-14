@@ -1,9 +1,9 @@
-//! Playlist resize, virtual window, and intra-row font choice.
+//! Playlist resize, virtual window, and per-list font choice.
 //! The shell hit-test must use the same window; this test locks the math.
 
 use std::fs;
 
-use llamp_core::{glyph_font, row_font, DockGroup, Pane, PlaylistWindow, RowFont};
+use llamp_core::{glyph_font, list_font, row_font, DockGroup, Pane, PlaylistWindow, RowFont};
 
 #[test]
 fn resize_rejects_a_mid_step_drag() {
@@ -32,14 +32,15 @@ fn ten_thousand_rows_expose_only_the_visible_window() {
 }
 
 #[test]
-fn a_missing_glyph_is_coretext_inside_a_bitmap_row() {
+fn a_missing_glyph_in_the_visible_set_promotes_the_list() {
     let ascii = |ch: char| (' '..='~').contains(&ch);
     assert_eq!(row_font("FIXTURE", ascii), RowFont::Bitmap);
     assert_eq!(glyph_font('F', ascii), RowFont::Bitmap);
     assert_eq!(glyph_font('日', ascii), RowFont::CoreText);
-    assert_eq!(row_font("F日", ascii), RowFont::Mixed);
-    assert_ne!(row_font("F日", ascii), RowFont::Bitmap);
-    assert_ne!(row_font("F日", ascii), RowFont::CoreText);
+    assert_eq!(row_font("F日", ascii), RowFont::CoreText);
+    assert_eq!(list_font(["FIXTURE"], ascii), RowFont::Bitmap);
+    assert_eq!(list_font(["FIXTURE", "F日"], ascii), RowFont::CoreText);
+    assert_ne!(list_font(["FIXTURE", "F日"], ascii), RowFont::Bitmap);
 }
 
 #[test]

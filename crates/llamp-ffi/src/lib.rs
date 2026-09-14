@@ -935,13 +935,31 @@ pub extern "C" fn llamp_playlist_hit_row(y: i32, scroll: u32, len: u32) -> i32 {
         .unwrap_or(-1)
 }
 
-/// 0 = every glyph is `text.bmp`. 1 = every glyph is CoreText. 2 = both in the same row.
+/// 0 = every glyph is `text.bmp`. 1 = CoreText. Any missing glyph promotes the string.
 #[no_mangle]
 pub extern "C" fn llamp_playlist_row_font(text: *const c_char) -> u32 {
     match row_mode(&cstr(text)) {
         llamp_core::RowFont::Bitmap => 0,
         llamp_core::RowFont::CoreText => 1,
-        llamp_core::RowFont::Mixed => 2,
+    }
+}
+
+/// 0 = every visible row is `text.bmp`. 1 = the whole list is CoreText.
+/// `rows` is `count` NUL-terminated UTF-8 strings.
+#[no_mangle]
+pub extern "C" fn llamp_playlist_list_font(rows: *const *const c_char, count: u32) -> u32 {
+    if rows.is_null() && count > 0 {
+        return 1;
+    }
+    let mut texts = Vec::new();
+    for index in 0..count as usize {
+        let ptr = unsafe { *rows.add(index) };
+        texts.push(cstr(ptr));
+    }
+    let refs: Vec<&str> = texts.iter().map(String::as_str).collect();
+    match llamp_core::list_font(refs, glyph_exists) {
+        llamp_core::RowFont::Bitmap => 0,
+        llamp_core::RowFont::CoreText => 1,
     }
 }
 

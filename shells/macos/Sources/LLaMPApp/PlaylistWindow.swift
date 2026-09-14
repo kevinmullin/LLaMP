@@ -36,6 +36,8 @@ public final class PlaylistListView: NSView {
     var entries: [String] = []
     var scroll: UInt32 = 0
     var rowsConsidered = 0
+    /// Destination integer scale for CoreText. Not a 5×7 offscreen.
+    var textScale = 1
     var onBackgroundDrag: ((NSEvent) -> Void)?
     private var slideUp: PlaylistMenu?
     private var axRows: [NSAccessibilityElement] = []
@@ -59,11 +61,20 @@ public final class PlaylistListView: NSView {
         rowsConsidered = Int(count)
         let fg = PleditText.color(llamp_text_color())
         let bg = PleditText.color(llamp_text_bg())
+        let visible = (0..<Int(count)).compactMap { slot -> String? in
+            let index = Int(scroll) + slot
+            return index < entries.count ? entries[index] : nil
+        }
+        let listCoreText = Self.listFontIsCoreText(visible)
         for slot in 0..<Int(count) {
             let index = Int(scroll) + slot
             guard index < entries.count else { break }
             let row = NSRect(x: 0, y: CGFloat(slot * 7), width: bounds.width, height: 7)
-            drawRow(entries[index], in: row, foreground: fg, background: bg)
+            if listCoreText {
+                PleditText.draw(entries[index], in: row, scale: max(textScale, 1), color: fg, background: bg)
+            } else {
+                drawBitmapRow(entries[index], in: row)
+            }
         }
         for index in 0..<5 {
             let button = llamp_playlist_button_at(UInt32(index))
@@ -103,19 +114,21 @@ public final class PlaylistListView: NSView {
         axButtons + axRows
     }
 
-    private func drawRow(_ text: String, in rect: NSRect, foreground: NSColor, background: NSColor) {
+    static func listFontIsCoreText(_ rows: [String]) -> Bool {
+        rows.contains { row in
+            row.withCString { llamp_playlist_row_font($0) == 1 }
+        }
+    }
+
+    private func drawBitmapRow(_ text: String, in rect: NSRect) {
         var x = rect.minX
         for ch in text {
             let scalar = ch.unicodeScalars.first.map { UInt32($0.value) } ?? 0
             let cell = NSRect(x: x, y: rect.minY, width: 5, height: 7)
-            if llamp_playlist_char_font(scalar) == 0 {
-                let image = llamp_text_char_blit(scalar)
-                defer { llamp_image_free(image.data, image.len) }
-                if let data = image.data, image.width > 0 {
-                    drawAtlas(data, width: Int(image.width), height: Int(image.height), in: cell)
-                }
-            } else {
-                PleditText.draw(String(ch), in: cell, scale: 1, color: foreground, background: background)
+            let image = llamp_text_char_blit(scalar)
+            defer { llamp_image_free(image.data, image.len) }
+            if let data = image.data, image.width > 0 {
+                drawAtlas(data, width: Int(image.width), height: Int(image.height), in: cell)
             }
             x += 5
         }

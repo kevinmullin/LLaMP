@@ -54,3 +54,14 @@ fn grant_search_enqueue_keeps_the_granted_path() {
     assert!(!root.join("Application Support").join("song.wav").exists());
     let _ = fs::remove_dir_all(&root);
 }
+
+#[test]
+fn playlist_list_font_promotes_the_visible_set() {
+    let fixture = CString::new("FIXTURE").expect("ascii");
+    let mixed = CString::new("F日").expect("mixed");
+    let one = [fixture.as_ptr()];
+    let two = [fixture.as_ptr(), mixed.as_ptr()];
+    assert_eq!(llamp_ffi::llamp_playlist_list_font(one.as_ptr(), 1), 0);
+    assert_eq!(llamp_ffi::llamp_playlist_list_font(two.as_ptr(), 2), 1);
+    assert_eq!(llamp_ffi::llamp_playlist_row_font(mixed.as_ptr()), 1);
+}

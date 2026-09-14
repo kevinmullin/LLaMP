@@ -169,11 +169,12 @@ Which surfaces use it:
 | Time digits | `numbers.bmp` / `nums_ex.bmp` sprites, not `text.bmp` |
 | kbps and kHz readouts | digit sprites if the sheet has them; otherwise `text.bmp` |
 | Marquee | `text.bmp` if every glyph exists; otherwise the whole marquee uses CoreText in `Normal` color |
-| Playlist row | `text.bmp` if every glyph in that row exists; otherwise that row uses CoreText |
-| Library, browser, lyrics, menus that contain a missing glyph | CoreText |
+| Playlist list | `text.bmp` if every glyph in the visible set exists; otherwise the whole visible list uses CoreText. Do not mix bitmap and CoreText in one row or across visible rows. |
+| Library, browser, lyrics | CoreText |
+| Menus that contain a missing glyph | CoreText |
 | EQ curve numeric readouts, if any | sprites first, CoreText if the sheet has no digits |
 
-CoreText uses a face we bundle that stays legible at the integer scale (a pixel font we have rights to, or a system face drawn into an offscreen buffer and nearest-neighbor scaled onto the skin grid — pick one in phase 5a and do not mix them per row). Colors come from `pledit.txt`. Do not anti-alias CoreText onto the skin and then scale; draw at the destination integer scale or snap the glyphs to the skin pixel grid. Blurry text on a sharp skin is a bug.
+CoreText uses a system face drawn into an offscreen buffer at the destination integer scale, nearest-neighbor onto the skin grid. Colors come from `pledit.txt`. Do not anti-alias CoreText onto the skin and then scale. Do not rasterize into a 5×7 cell and magnify. Blurry text on a sharp skin is a bug. Intra-row Mixed is rejected: a 5×7 CoreText CJK cell is not that character.
 
 Karaoke word highlight is a CoreText concern. It is not forced through `text.bmp`. See [lyrics](lyrics.md).
 
