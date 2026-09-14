@@ -9,6 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Violation {
@@ -144,20 +145,30 @@ fn spawn_child(mode: &str) -> bool {
 }
 
 fn hook_dylib() -> PathBuf {
-    let exe = env::current_exe().expect("test exe");
-    let path = exe.parent().unwrap().join("libllamp_rt_hook.dylib");
-    if !path.exists() {
-        let src = env::temp_dir().join("llamp_rt_hook.c");
+    static PATH: OnceLock<PathBuf> = OnceLock::new();
+    PATH.get_or_init(|| {
+        // Not `target/debug/deps`: cargo test --workspace deletes that tree
+        // while sibling tests still spawn. Lock and I/O share this image.
+        let dir = env::temp_dir().join("llamp-rt-hook");
+        fs::create_dir_all(&dir).expect("hook dir");
+        let path = dir.join(format!("libllamp_rt_hook_{}.dylib", std::process::id()));
+        let src = dir.join(format!("llamp_rt_hook_{}.c", std::process::id()));
+        let tmp = path.with_extension("dylib.building");
         fs::write(&src, HOOK_C).expect("write hook source");
         let status = Command::new("clang")
             .args(["-shared", "-fPIC", "-O2", "-o"])
-            .arg(&path)
+            .arg(&tmp)
             .arg(&src)
             .status()
             .expect("clang");
         assert!(status.success(), "failed to build the realtime hook dylib");
-    }
-    path
+        fs::rename(&tmp, &path).unwrap_or_else(|_| {
+            fs::copy(&tmp, &path).expect("install hook dylib");
+            let _ = fs::remove_file(&tmp);
+        });
+        path
+    })
+    .clone()
 }
 
 type VoidFn = unsafe extern "C" fn();

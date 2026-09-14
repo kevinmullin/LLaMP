@@ -29,7 +29,7 @@ Done locally on 2026-09-13. `cargo test --package llamp-audio`: 19 passed.
 ## 1b — output and the realtime hook
 
 - `Output` is the ADR 006 seam. cpal 0.18 is the macOS backend: shared float, integer plus TPDF dither if the device is not float, no hog. The callback takes an `rtrb` ring allocated before the stream starts.
-- The allocator hook fails the test on allocation. Lock and I/O are a `DYLD_INTERPOSE` dylib, because in-process interpose is unreliable here. The callback fill and the FFT hop pass that hook. Construction of the ring, the limiter delay, and the FFT plan is outside the section.
+- The allocator hook fails the test on allocation. Lock and I/O are a `DYLD_INTERPOSE` dylib, because in-process interpose is unreliable here. The image is compiled once into `$TMPDIR/llamp-rt-hook`, not `target/debug/deps`, so `cargo test --workspace` cannot delete it under a running child. The callback fill and the FFT hop pass that hook. Construction of the ring, the limiter delay, and the FFT plan is outside the section.
 - Underrun spike ran: a starved period writes silence and counts one underrun. The default-output spike switched PXC 550-II (44100) to MacBook Pro Speakers (48000) and back; both directions emitted `DeviceChanged`, the reopen counted one underrun for the rate change, and callbacks resumed. The original default was restored. ADR 006 is unchanged. See `docs/investigations/cpal-hotswap.md`.
 
 ## 1c — seek, gapless, ReplayGain
